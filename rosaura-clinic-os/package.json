@@ -4,8 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && next build",
-    "start": "next start",
+    "build": "node scripts/prepare-database.mjs && prisma generate && next build",
+    "start": "node scripts/prepare-database.mjs && node scripts/ensure-mysql.mjs && next start",
     "lint": "eslint",
     "db:setup": "prisma db push && prisma db seed"
   },
