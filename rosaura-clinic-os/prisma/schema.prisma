@@ -1,0 +1,353 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String                 @id @default(cuid())
+  employeeId     String                 @unique
+  email          String                 @unique
+  passwordHash   String
+  isActive       Boolean                @default(true)
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  employee       Employee               @relation(fields: [employeeId], references: [id])
+  auditLogs      AuditLog[]
+  payments       Payment[]
+  reversals      PaymentReversal[]
+  bookings       Booking[]              @relation("BookingCreator")
+  statusChanges  BookingStatusHistory[]
+  movements      StockMovement[]
+  notes          VisitNote[]
+}
+
+model Employee {
+  id           String              @id @default(cuid())
+  employeeCode String              @unique
+  name         String
+  phone        String?
+  position     String
+  isActive     Boolean             @default(true)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  user         User?
+  roles        EmployeeRole[]
+  assignments  BookingAssignment[]
+  visits       Visit[]
+}
+
+model Role {
+  id        String         @id @default(cuid())
+  name      String         @unique
+  employees EmployeeRole[]
+}
+
+model EmployeeRole {
+  employeeId String
+  roleId     String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  role       Role     @relation(fields: [roleId], references: [id])
+
+  @@id([employeeId, roleId])
+}
+
+model Client {
+  id               String    @id @default(cuid())
+  clientCode       String    @unique
+  fullName         String
+  phone            String
+  address          String    @default("")
+  gender           String    @default("")
+  externalId       String?   @unique
+  dateOfBirth      DateTime?
+  registeredAt     DateTime  @default(now())
+  isActive         Boolean   @default(true)
+  consentVersion   String?
+  consentAt        DateTime?
+  consentRevokedAt DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  bookings         Booking[]
+  visits           Visit[]
+  invoices         Invoice[]
+  skinRecords      SkinRecord[]
+
+  @@index([phone])
+  @@index([fullName])
+}
+
+model Service {
+  id              String           @id @default(cuid())
+  code            String           @unique
+  name            String
+  durationMinutes Int
+  price           Int
+  isActive        Boolean          @default(true)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  bookingServices BookingService[]
+}
+
+model Room {
+  id       String    @id @default(cuid())
+  name     String    @unique
+  isActive Boolean   @default(true)
+  bookings Booking[]
+}
+
+model Booking {
+  id           String                 @id @default(cuid())
+  bookingCode  String                 @unique
+  clientId     String
+  roomId       String?
+  startAt      DateTime
+  endAt        DateTime
+  status       String
+  notes        String                 @default("")
+  source       String                 @default("internal")
+  createdById  String
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+  client       Client                 @relation(fields: [clientId], references: [id])
+  room         Room?                  @relation(fields: [roomId], references: [id])
+  createdBy    User                   @relation("BookingCreator", fields: [createdById], references: [id])
+  services     BookingService[]
+  assignments  BookingAssignment[]
+  history      BookingStatusHistory[]
+  visit        Visit?
+  invoice      Invoice?
+
+  @@index([startAt, endAt, status])
+}
+
+model BookingService {
+  id                  String  @id @default(cuid())
+  bookingId           String
+  serviceId           String
+  serviceNameSnapshot String
+  priceSnapshot       Int
+  durationSnapshot    Int
+  booking             Booking @relation(fields: [bookingId], references: [id])
+  service             Service @relation(fields: [serviceId], references: [id])
+}
+
+model BookingAssignment {
+  id             String   @id @default(cuid())
+  bookingId      String
+  employeeId     String
+  assignmentType String   @default("THERAPIST")
+  booking        Booking  @relation(fields: [bookingId], references: [id])
+  employee       Employee @relation(fields: [employeeId], references: [id])
+}
+
+model BookingStatusHistory {
+  id          String   @id @default(cuid())
+  bookingId   String
+  oldStatus   String?
+  newStatus   String
+  note        String   @default("")
+  changedById String
+  changedAt   DateTime @default(now())
+  booking     Booking  @relation(fields: [bookingId], references: [id])
+  changedBy   User     @relation(fields: [changedById], references: [id])
+}
+
+model Visit {
+  id         String     @id @default(cuid())
+  clientId   String
+  bookingId  String     @unique
+  providerId String
+  visitedAt  DateTime
+  status     String     @default("OPEN")
+  client     Client     @relation(fields: [clientId], references: [id])
+  booking    Booking    @relation(fields: [bookingId], references: [id])
+  provider   Employee   @relation(fields: [providerId], references: [id])
+  note       VisitNote?
+  invoice    Invoice?
+}
+
+model VisitNote {
+  id            String          @id @default(cuid())
+  visitId       String          @unique
+  complaint     String          @default("")
+  workDone      String          @default("")
+  materialsNote String          @default("")
+  followUpOn    DateTime?
+  authorId      String
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  visit         Visit           @relation(fields: [visitId], references: [id])
+  author        User            @relation(fields: [authorId], references: [id])
+  usages        MaterialUsage[]
+}
+
+model Invoice {
+  id            String        @id @default(cuid())
+  invoiceNumber String        @unique
+  clientId      String
+  bookingId     String?       @unique
+  visitId       String?       @unique
+  subtotal      Int
+  grandTotal    Int
+  status        String        @default("OPEN")
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  client        Client        @relation(fields: [clientId], references: [id])
+  booking       Booking?      @relation(fields: [bookingId], references: [id])
+  visit         Visit?        @relation(fields: [visitId], references: [id])
+  items         InvoiceItem[]
+  payments      Payment[]
+}
+
+model InvoiceItem {
+  id                  String  @id @default(cuid())
+  invoiceId           String
+  itemType            String
+  descriptionSnapshot String
+  quantity            Int
+  unitPrice           Int
+  invoice             Invoice @relation(fields: [invoiceId], references: [id])
+}
+
+model Payment {
+  id             String           @id @default(cuid())
+  invoiceId      String
+  method         String
+  amount         Int
+  paidAt         DateTime         @default(now())
+  status         String           @default("SUCCESS")
+  idempotencyKey String           @unique
+  createdById    String
+  invoice        Invoice          @relation(fields: [invoiceId], references: [id])
+  createdBy      User             @relation(fields: [createdById], references: [id])
+  reversal       PaymentReversal?
+}
+
+model PaymentReversal {
+  id          String   @id @default(cuid())
+  paymentId   String   @unique
+  amount      Int
+  reason      String
+  createdById String
+  createdAt   DateTime @default(now())
+  payment     Payment  @relation(fields: [paymentId], references: [id])
+  createdBy   User     @relation(fields: [createdById], references: [id])
+}
+
+model ProductCategory {
+  id       String    @id @default(cuid())
+  name     String    @unique
+  products Product[]
+}
+
+model Product {
+  id         String          @id @default(cuid())
+  sku        String          @unique
+  name       String
+  categoryId String
+  unit       String
+  minStock   Int             @default(0)
+  trackBatch Boolean         @default(false)
+  qtyOnHand  Int             @default(0)
+  sellPrice  Int             @default(0)
+  description String         @default("")
+  externalId String?         @unique
+  isActive   Boolean         @default(true)
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+  category   ProductCategory @relation(fields: [categoryId], references: [id])
+  batches    StockBatch[]
+  movements  StockMovement[]
+}
+
+model StockBatch {
+  id           String          @id @default(cuid())
+  productId    String
+  batchNumber  String
+  expiryDate   DateTime
+  qtyAvailable Int
+  unitCost     Int
+  product      Product         @relation(fields: [productId], references: [id])
+  movements    StockMovement[]
+  usages       MaterialUsage[]
+
+  @@index([productId, expiryDate])
+}
+
+model StockMovement {
+  id           String      @id @default(cuid())
+  productId    String
+  batchId      String?
+  movementType String
+  quantity     Int
+  reason       String      @default("")
+  createdById  String
+  createdAt    DateTime    @default(now())
+  product      Product     @relation(fields: [productId], references: [id])
+  batch        StockBatch? @relation(fields: [batchId], references: [id])
+  createdBy    User        @relation(fields: [createdById], references: [id])
+}
+
+model MaterialUsage {
+  id           String     @id @default(cuid())
+  visitNoteId  String
+  stockBatchId String
+  quantityUsed Int
+  createdAt    DateTime   @default(now())
+  visitNote    VisitNote  @relation(fields: [visitNoteId], references: [id])
+  batch        StockBatch @relation(fields: [stockBatchId], references: [id])
+}
+
+model SkinRecord {
+  id                         String   @id @default(cuid())
+  clientId                   String
+  externalId                 String   @unique
+  visitDate                  DateTime
+  complaint                  String   @default("")
+  doctorNotes                String   @default("")
+  skinType                   String   @default("")
+  moisture                   String   @default("")
+  acneStatus                 Boolean  @default(false)
+  acneArea                   String   @default("")
+  acneDegree                 String   @default("")
+  hyperpigmentationStatus    Boolean  @default(false)
+  hyperpigmentationArea      String   @default("")
+  hyperpigmentationDegree    String   @default("")
+  wrinkleStatus              Boolean  @default(false)
+  wrinkleArea                String   @default("")
+  wrinkleDegree              String   @default("")
+  scarStatus                 Boolean  @default(false)
+  scarType                   String   @default("")
+  allergyHistory             String   @default("")
+  diseaseHistory             String   @default("")
+  medicationHistory          String   @default("")
+  lastTreatmentProduct       String   @default("")
+  otherSkinConditions        String   @default("")
+  contraception              String   @default("")
+  pregnant                   Boolean  @default(false)
+  breastfeeding              Boolean  @default(false)
+  photoBefore                String   @default("")
+  photoAfter                 String   @default("")
+  createdAt                  DateTime @default(now())
+  client                     Client   @relation(fields: [clientId], references: [id])
+
+  @@index([clientId, visitDate])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorUserId String
+  action      String
+  entityType  String
+  entityId    String
+  summary     String   @default("")
+  occurredAt  DateTime @default(now())
+  actor       User     @relation(fields: [actorUserId], references: [id])
+
+  @@index([occurredAt])
+  @@index([entityType, entityId])
+}
