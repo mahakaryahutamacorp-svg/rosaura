@@ -1,7 +1,17 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const PROTECTED = ["/dashboard", "/bookings", "/clients", "/billing", "/services", "/inventory", "/employees", "/audit"];
+const PROTECTED = [
+  "/dashboard",
+  "/bookings",
+  "/clients",
+  "/billing",
+  "/services",
+  "/inventory",
+  "/employees",
+  "/audit",
+  "/clinical-photos",
+];
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;

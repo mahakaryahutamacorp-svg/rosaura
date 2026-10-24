@@ -46,3 +46,9 @@ next-env.d.ts
 
 # clinic export with patient data
 *_records.json
+pasien-rosaura-*.csv
+produk-rosaura-*.csv
+rekam-medis-rosaura-*.csv
+
+# private clinical photos
+/storage/

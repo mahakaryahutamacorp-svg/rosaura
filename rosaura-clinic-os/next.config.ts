@@ -5,13 +5,9 @@ const nextConfig: NextConfig = {
   // menolak pembacaan cookie di luar Suspense, jadi pratinjau lokal memakai
   // render permintaan biasa.
   cacheComponents: false,
-  turbopack: {
-    rules: {
-      "*.css": {
-        loaders: ["@tailwindcss/turbopack"],
-        as: "*.css",
-      },
-    },
+  experimental: {
+    serverActions: { bodySizeLimit: "24mb" },
+    proxyClientMaxBodySize: "24mb",
   },
 };
 

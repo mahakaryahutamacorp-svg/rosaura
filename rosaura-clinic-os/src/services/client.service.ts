@@ -31,7 +31,10 @@ export async function getClientProfile(clientId: string) {
   return prisma.client.findUnique({
     where: { id: clientId },
     include: {
-      skinRecords: { orderBy: { visitDate: "desc" } },
+      skinRecords: {
+        orderBy: { visitDate: "desc" },
+        include: { photos: { orderBy: { createdAt: "asc" } } },
+      },
     },
   });
 }

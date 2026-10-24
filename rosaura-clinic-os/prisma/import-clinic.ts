@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import path from "node:path";
 import type { PrismaClient } from "@prisma/client";
 
@@ -84,6 +85,8 @@ export async function importClinicData(prisma: PrismaClient, actorUserId: string
   await prisma.payment.deleteMany();
   await prisma.invoiceItem.deleteMany();
   await prisma.invoice.deleteMany();
+  await prisma.clinicalPhoto.deleteMany();
+  await rm(path.join(process.cwd(), "storage", "clinical-photos"), { recursive: true, force: true });
   await prisma.skinRecord.deleteMany();
   await prisma.visitNote.deleteMany();
   await prisma.visit.deleteMany();

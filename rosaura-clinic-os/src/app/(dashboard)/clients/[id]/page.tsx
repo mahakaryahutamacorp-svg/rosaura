@@ -1,15 +1,34 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { addVisitPhotosAction, createSkinVisitAction, removeVisitPhotoAction } from "@/app/actions/clinical-photos";
+import { Flash } from "@/components/Flash";
+import { PhotoProgress } from "@/components/clinical/PhotoProgress";
 import { can, canSeeClinical, requireUser } from "@/lib/access";
-import { formatDateOnlyUtc, formatLongDate } from "@/lib/time";
+import { fieldClass, labelClass, primaryButton, quietButton } from "@/lib/styles";
+import { formatDateOnlyUtc, formatLongDate, todayJakarta } from "@/lib/time";
 import { getClientProfile } from "@/services/client.service";
 
-export default async function ClientDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const [user, route] = await Promise.all([requireUser(), params]);
+export default async function ClientDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ error?: string; notice?: string }>;
+}) {
+  const [user, route, query] = await Promise.all([requireUser(), params, searchParams]);
   if (!can(user, ["FRONT_OFFICE", "CLINICAL"])) redirect("/dashboard");
   const client = await getClientProfile(route.id);
   if (!client) notFound();
   const showClinical = canSeeClinical(user);
+  const progress = [...client.skinRecords]
+    .sort((left, right) => left.visitDate.getTime() - right.visitDate.getTime())
+    .flatMap((record) =>
+      record.photos.map((photo) => ({
+        id: photo.id,
+        label: formatLongDate(record.visitDate),
+        caption: photo.caption,
+      })),
+    );
 
   return (
     <div className="space-y-6">
@@ -32,6 +51,36 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
         <Fact label="Status" value={client.isActive ? "Aktif" : "Nonaktif"} />
       </section>
 
+      <Flash error={query.error} notice={query.notice} />
+
+      {showClinical ? (
+        <>
+          <PhotoProgress photos={progress} />
+          <form action={createSkinVisitAction} className="grid gap-3 rounded-3xl border border-line bg-paper p-5 md:grid-cols-2">
+            <div className="md:col-span-2">
+              <h2 className="font-display text-2xl">Kunjungan baru</h2>
+              <p className="text-sm text-muted">Catatan dan foto kunjungan ini masuk ke riwayat dokter.</p>
+            </div>
+            <input type="hidden" name="clientId" value={client.id} />
+            <label>
+              <span className={labelClass}>Tanggal kunjungan</span>
+              <input className={fieldClass} type="date" name="visitDate" required defaultValue={todayJakarta()} />
+            </label>
+            <label>
+              <span className={labelClass}>Foto</span>
+              <input className="block w-full text-sm" type="file" name="photos" accept="image/jpeg,image/png,image/webp" multiple />
+            </label>
+            <label className="md:col-span-2">
+              <span className={labelClass}>Catatan</span>
+              <textarea className={`${fieldClass} h-24 py-2`} name="doctorNotes" placeholder="Temuan atau rencana pada kunjungan ini" />
+            </label>
+            <button className={`${primaryButton} md:w-fit`} type="submit">
+              Simpan kunjungan
+            </button>
+          </form>
+        </>
+      ) : null}
+
       <section className="space-y-3">
         <h2 className="font-display text-2xl">Riwayat kunjungan</h2>
         {client.skinRecords.length === 0 ? <p className="text-sm text-muted">Belum ada rekam kunjungan.</p> : null}
@@ -47,7 +96,45 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
                 <p className="text-sm text-muted">Rekam kulit tersimpan</p>
               )}
             </div>
-            {showClinical ? <ClinicalRecord record={record} /> : null}
+            {showClinical ? (
+              <>
+                <ClinicalRecord record={record} />
+                <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  {record.photos.map((photo) => (
+                    <figure key={photo.id} className="rounded-2xl border border-line bg-ivory p-2">
+                      <img
+                        className="h-32 w-full rounded-xl object-cover"
+                        src={`/clinical-photos/${photo.id}`}
+                        alt={photo.caption || `Foto kunjungan ${formatLongDate(record.visitDate)}`}
+                      />
+                      {photo.caption ? <figcaption className="mt-2 text-xs text-brown">{photo.caption}</figcaption> : null}
+                      <form action={removeVisitPhotoAction} className="mt-2">
+                        <input type="hidden" name="clientId" value={client.id} />
+                        <input type="hidden" name="photoId" value={photo.id} />
+                        <button className="text-xs text-[#8a3d36]" type="submit">
+                          Hapus
+                        </button>
+                      </form>
+                    </figure>
+                  ))}
+                </div>
+                <form action={addVisitPhotosAction} className="mt-4 grid gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
+                  <input type="hidden" name="clientId" value={client.id} />
+                  <input type="hidden" name="skinRecordId" value={record.id} />
+                  <label>
+                    <span className={labelClass}>Tambah foto kunjungan ini</span>
+                    <input className="block w-full text-sm" type="file" name="photos" accept="image/jpeg,image/png,image/webp" multiple required />
+                  </label>
+                  <label>
+                    <span className={labelClass}>Keterangan</span>
+                    <input className={fieldClass} name="caption" placeholder="Sebelum treatment, pipi kanan" />
+                  </label>
+                  <button className={quietButton} type="submit">
+                    Simpan foto
+                  </button>
+                </form>
+              </>
+            ) : null}
           </article>
         ))}
       </section>

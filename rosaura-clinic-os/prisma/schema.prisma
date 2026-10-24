@@ -23,6 +23,7 @@ model User {
   statusChanges  BookingStatusHistory[]
   movements      StockMovement[]
   notes          VisitNote[]
+  clinicalPhotos ClinicalPhoto[]
 }
 
 model Employee {
@@ -332,10 +333,25 @@ model SkinRecord {
   breastfeeding              Boolean  @default(false)
   photoBefore                String   @default("")
   photoAfter                 String   @default("")
-  createdAt                  DateTime @default(now())
-  client                     Client   @relation(fields: [clientId], references: [id])
+  createdAt                  DateTime        @default(now())
+  client                     Client          @relation(fields: [clientId], references: [id])
+  photos                     ClinicalPhoto[]
 
   @@index([clientId, visitDate])
+}
+
+model ClinicalPhoto {
+  id           String     @id @default(cuid())
+  skinRecordId String
+  contentType  String
+  byteSize     Int
+  caption      String     @default("")
+  createdById  String
+  createdAt    DateTime   @default(now())
+  skinRecord   SkinRecord @relation(fields: [skinRecordId], references: [id])
+  createdBy    User       @relation(fields: [createdById], references: [id])
+
+  @@index([skinRecordId, createdAt])
 }
 
 model AuditLog {
