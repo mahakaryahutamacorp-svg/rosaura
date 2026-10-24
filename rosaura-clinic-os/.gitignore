@@ -41,9 +41,10 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# local preview database
+# local preview database and manual Hostinger import (contains clinic data)
 /prisma/dev.db
 /prisma/dev.db-journal
+/prisma/hostinger-import.sql
 
 # clinic export with patient data
 *_records.json
