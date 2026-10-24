@@ -6,7 +6,10 @@ const nextConfig: NextConfig = {
   // render permintaan biasa.
   cacheComponents: false,
   experimental: {
-    serverActions: { bodySizeLimit: "24mb" },
+    serverActions: {
+      bodySizeLimit: "24mb",
+      allowedOrigins: ["rosaura.pro", "www.rosaura.pro"],
+    },
     proxyClientMaxBodySize: "24mb",
   },
 };

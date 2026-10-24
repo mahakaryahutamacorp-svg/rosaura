@@ -29,7 +29,11 @@ export default async function LoginPage() {
           <p className="font-display text-4xl text-ink lg:hidden">Rosaura</p>
           <h2 className="mt-2 mb-6 text-lg text-brown">Masuk ke Clinic OS</h2>
           <LoginForm />
-          <p className="mt-6 text-xs text-muted">Pratinjau lokal di komputer ini. Arsip pasien, kunjungan, dan produk ada di SQLite, bukan server klinik.</p>
+          <p className="mt-6 text-xs text-muted">
+            {process.env.NODE_ENV === "production"
+              ? "Sistem operasional Rosaura Skin Clinic."
+              : "Pratinjau lokal di komputer ini. Arsip pasien, kunjungan, dan produk ada di SQLite, bukan server klinik."}
+          </p>
         </div>
       </section>
     </main>

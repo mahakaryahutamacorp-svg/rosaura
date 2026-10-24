@@ -12,9 +12,12 @@ const fraunces = Fraunces({
   variable: "--font-fraunces",
 });
 
+const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(appUrl),
   title: "Rosaura Clinic OS",
-  description: "Pratinjau lokal operasional Rosaura Skin Clinic",
+  description: "Operasional Rosaura Skin Clinic",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
