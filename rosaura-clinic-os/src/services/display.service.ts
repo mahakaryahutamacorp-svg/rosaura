@@ -6,6 +6,37 @@ const COUNTER_ID = "counter";
 const BED_NAMES = ["Bed 1", "Bed 2", "Bed 3"] as const;
 const BILL_TTL_MS = 20_000;
 
+function isMissingCounter(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const code = "code" in error ? String(error.code) : "";
+  const message = "message" in error ? String(error.message) : "";
+  return code === "P2021" || /does not exist|no such table|unknown table/i.test(message);
+}
+
+async function ensureCounterTable() {
+  const mysql = (process.env.DATABASE_URL ?? "").startsWith("mysql://");
+  if (mysql) {
+    await prisma.$executeRawUnsafe(
+      "CREATE TABLE IF NOT EXISTS `CounterDisplay` (`id` VARCHAR(191) NOT NULL, `mode` VARCHAR(191) NOT NULL DEFAULT 'LOBBY', `clientName` VARCHAR(191) NOT NULL DEFAULT '', `linesJson` TEXT NOT NULL, `total` INT NOT NULL DEFAULT 0, `stamp` VARCHAR(191) NOT NULL DEFAULT '0', `updatedAt` DATETIME(3) NOT NULL, PRIMARY KEY (`id`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+    );
+    return;
+  }
+  await prisma.$executeRawUnsafe(
+    `CREATE TABLE IF NOT EXISTS "CounterDisplay" ("id" TEXT NOT NULL PRIMARY KEY, "mode" TEXT NOT NULL DEFAULT 'LOBBY', "clientName" TEXT NOT NULL DEFAULT '', "linesJson" TEXT NOT NULL DEFAULT '[]', "total" INTEGER NOT NULL DEFAULT 0, "stamp" TEXT NOT NULL DEFAULT '0', "updatedAt" DATETIME NOT NULL)`,
+  );
+}
+
+async function readCounter() {
+  if (typeof prisma.counterDisplay?.findUnique !== "function") return null;
+  try {
+    return await prisma.counterDisplay.findUnique({ where: { id: COUNTER_ID } });
+  } catch (error) {
+    if (!isMissingCounter(error)) throw error;
+    await ensureCounterTable();
+    return prisma.counterDisplay.findUnique({ where: { id: COUNTER_ID } });
+  }
+}
+
 function newerStamp(incoming: string, current: string) {
   try {
     return BigInt(incoming) > BigInt(current);
@@ -46,7 +77,7 @@ export async function getCustomerDisplay(): Promise<CustomerDisplaySnapshot> {
       },
       orderBy: { startAt: "asc" },
     }),
-    prisma.counterDisplay.findUnique({ where: { id: COUNTER_ID } }),
+    readCounter(),
   ]);
 
   const queue = bookings
@@ -71,7 +102,7 @@ export async function getCustomerDisplay(): Promise<CustomerDisplaySnapshot> {
 }
 
 export async function publishCounterBill(input: CustomerBill & { stamp: string }) {
-  const current = await prisma.counterDisplay.findUnique({ where: { id: COUNTER_ID } });
+  const current = await readCounter();
   if (current && !newerStamp(input.stamp, current.stamp)) return;
 
   const data = {
@@ -90,7 +121,7 @@ export async function publishCounterBill(input: CustomerBill & { stamp: string }
 }
 
 export async function clearCounterBill(stamp: string) {
-  const current = await prisma.counterDisplay.findUnique({ where: { id: COUNTER_ID } });
+  const current = await readCounter();
   if (current && !newerStamp(stamp, current.stamp)) return;
 
   await prisma.counterDisplay.upsert({

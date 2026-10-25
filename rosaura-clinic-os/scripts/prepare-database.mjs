@@ -41,6 +41,7 @@ function widenLongText(schema) {
     "scarType",
     "summary",
     "caption",
+    "linesJson",
   ].join("|");
   return schema.replace(
     new RegExp(`^(\\s+)(${fields})(\\s+String\\??(?:\\s+@default\\([^)]*\\))?)(?!\\s+@db\\.Text)(\\s*)$`, "gm"),
@@ -54,7 +55,11 @@ if (!databaseUrl.startsWith("mysql://")) {
   console.log("Database lokal tetap SQLite.");
 } else {
   const current = readFileSync(schemaPath, "utf8");
-  const next = widenLongText(current.replace(/provider\s*=\s*"sqlite"/, 'provider = "mysql"'));
+  const widened = widenLongText(current.replace(/provider\s*=\s*"sqlite"/, 'provider = "mysql"'));
+  const next = widened.replace(
+    /^(\s+linesJson\s+String\s+@default\("\[\]"\))(?!\s+@db\.Text)/m,
+    "$1 @db.Text",
+  );
   if (next !== current) writeFileSync(schemaPath, next);
   console.log("Skema disiapkan untuk MySQL.");
 }
