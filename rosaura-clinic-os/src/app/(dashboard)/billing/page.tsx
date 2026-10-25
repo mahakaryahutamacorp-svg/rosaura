@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { CashierDesk } from "@/components/billing/CashierDesk";
+import { OpenCustomerDisplay } from "@/components/display/OpenCustomerDisplay";
 import { Flash } from "@/components/Flash";
 import { canBill, requireUser } from "@/lib/access";
 import { formatRupiah } from "@/lib/format";
@@ -24,9 +25,12 @@ export default async function BillingPage({
 
   return (
     <div className="space-y-6">
-      <div className="no-print">
-        <h1 className="font-display text-4xl">Kasir</h1>
-        <p className="text-sm text-muted">Cari produk, layanan, atau klien dengan mengetik. Gulir daftar untuk melihat semuanya. Stok produk terpotong otomatis.</p>
+      <div className="no-print flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="font-display text-4xl">Kasir</h1>
+          <p className="text-sm text-muted">Cari produk, layanan, atau klien dengan mengetik. Gulir daftar untuk melihat semuanya. Stok produk terpotong otomatis.</p>
+        </div>
+        <OpenCustomerDisplay />
       </div>
       <div className="no-print">
         <Flash error={params.error} notice={params.notice} />

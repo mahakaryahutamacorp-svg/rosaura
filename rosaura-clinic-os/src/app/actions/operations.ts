@@ -2,7 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { requireUser } from "@/lib/access";
+import { canBill, requireUser } from "@/lib/access";
+import type { CustomerBill } from "@/lib/display";
+import { clearCounterBill, publishCounterBill } from "@/services/display.service";
 import { ServiceError } from "@/lib/errors";
 import { z } from "zod";
 import { changeBookingStatus, createBooking, rescheduleBooking } from "@/services/booking.service";
@@ -375,6 +377,34 @@ export async function adjustStockAction(formData: FormData) {
     bounce("/inventory", error);
   }
   redirect("/inventory?notice=" + encodeURIComponent("Stok disesuaikan."));
+}
+
+const displayLineSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  quantity: z.number().int().positive().max(999),
+  amount: z.number().int().min(-1_000_000_000).max(1_000_000_000),
+});
+
+const displayBillSchema = z.object({
+  clientName: z.string().trim().min(1).max(120),
+  lines: z.array(displayLineSchema).max(40),
+  total: z.number().int().min(0).max(1_000_000_000),
+  stamp: z.string().regex(/^\d{10,24}$/),
+});
+
+export async function publishCustomerDisplayAction(input: CustomerBill & { stamp: string }) {
+  const user = await requireUser();
+  if (!canBill(user)) return;
+  const parsed = displayBillSchema.safeParse(input);
+  if (!parsed.success) return;
+  await publishCounterBill(parsed.data);
+}
+
+export async function clearCustomerDisplayAction(stamp: string) {
+  const user = await requireUser();
+  if (!canBill(user)) return;
+  if (!/^\d{10,24}$/.test(stamp)) return;
+  await clearCounterBill(stamp);
 }
 
 export async function updateEmployeeAction(formData: FormData) {

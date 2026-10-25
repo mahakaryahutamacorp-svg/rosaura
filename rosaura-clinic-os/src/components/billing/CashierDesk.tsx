@@ -4,6 +4,7 @@ import { useActionState, useEffect, useMemo, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { checkoutSaleAction, type ActionResult } from "@/app/actions/operations";
 import { Receipt } from "@/components/billing/Receipt";
+import { CustomerBillSync } from "@/components/display/CustomerBillSync";
 import { formatRupiah } from "@/lib/format";
 import { smartSearchScore } from "@/lib/search";
 import { fieldClass, labelClass, primaryButton, quietButton } from "@/lib/styles";
@@ -168,9 +169,25 @@ export function CashierDesk({
   }
 
   const payAmount = method === "SPLIT" ? (cash ?? 0) : total;
+  const discountApplied = discount !== null && discount <= subtotal ? discount : 0;
+  const displayLines = [
+    ...cart.map((line) => ({
+      name: line.name,
+      quantity: line.quantity,
+      amount: line.sellPrice * line.quantity,
+    })),
+    ...(discountApplied > 0 ? [{ name: "Diskon", quantity: 1, amount: -discountApplied }] : []),
+  ];
 
   return (
     <form action={action} className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+      <CustomerBillSync
+        bill={
+          client && cart.length > 0
+            ? { clientName: client.fullName, lines: displayLines, total: Math.max(subtotal - discountApplied, 0) }
+            : null
+        }
+      />
       <input type="hidden" name="idempotencyKey" value={key} />
       <input type="hidden" name="clientId" value={clientId} />
       <input type="hidden" name="lines" value={JSON.stringify(cart.map((line) => ({ kind: line.kind, id: line.id, quantity: line.quantity })))} />

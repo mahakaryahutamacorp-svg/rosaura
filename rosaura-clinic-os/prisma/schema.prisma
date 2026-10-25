@@ -354,6 +354,16 @@ model ClinicalPhoto {
   @@index([skinRecordId, createdAt])
 }
 
+model CounterDisplay {
+  id         String   @id
+  mode       String   @default("LOBBY")
+  clientName String   @default("")
+  linesJson  String   @default("[]")
+  total      Int      @default(0)
+  stamp      String   @default("0")
+  updatedAt  DateTime @updatedAt
+}
+
 model AuditLog {
   id          String   @id @default(cuid())
   actorUserId String

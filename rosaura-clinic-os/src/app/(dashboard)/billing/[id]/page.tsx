@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { reversePaymentAction } from "@/app/actions/operations";
 import { PaymentForm } from "@/components/billing/PaymentForm";
+import { OpenCustomerDisplay } from "@/components/display/OpenCustomerDisplay";
 import { Receipt } from "@/components/billing/Receipt";
 import { Flash } from "@/components/Flash";
 import { canBill, isOwner, requireUser } from "@/lib/access";
@@ -35,7 +36,10 @@ export default async function InvoicePage({
         <Link href="/billing" className="text-sm text-gold-deep">
           Semua tagihan
         </Link>
-        <h1 className="font-display mt-2 text-4xl">{invoice.invoiceNumber}</h1>
+        <div className="mt-2 flex flex-wrap items-end justify-between gap-3">
+          <h1 className="font-display text-4xl">{invoice.invoiceNumber}</h1>
+          <OpenCustomerDisplay />
+        </div>
         <p className="text-sm text-muted">
           {invoice.client.fullName} · {invoiceLabel[invoice.status]}
           {invoice.booking ? ` · ${invoice.booking.bookingCode}` : ""}
@@ -71,7 +75,18 @@ export default async function InvoicePage({
       </div>
 
       {invoice.status !== "VOID" && remaining > 0 ? (
-        <PaymentForm invoiceId={invoice.id} subtotal={invoice.subtotal} grandTotal={invoice.grandTotal} paid={paid} />
+        <PaymentForm
+          invoiceId={invoice.id}
+          clientName={invoice.client.fullName}
+          lines={saleLines.map((item) => ({
+            name: item.descriptionSnapshot,
+            quantity: item.quantity,
+            amount: item.unitPrice * item.quantity,
+          }))}
+          subtotal={invoice.subtotal}
+          grandTotal={invoice.grandTotal}
+          paid={paid}
+        />
       ) : null}
 
       <section className="no-print space-y-3">

@@ -3,16 +3,22 @@
 import { useState } from "react";
 import { useFormStatus } from "react-dom";
 import { recordPaymentAction } from "@/app/actions/operations";
+import { CustomerBillSync } from "@/components/display/CustomerBillSync";
+import type { DisplayLine } from "@/lib/display";
 import { formatRupiah } from "@/lib/format";
 import { fieldClass, labelClass, primaryButton } from "@/lib/styles";
 
 export function PaymentForm({
   invoiceId,
+  clientName,
+  lines,
   subtotal,
   grandTotal,
   paid,
 }: {
   invoiceId: string;
+  clientName: string;
+  lines: DisplayLine[];
   subtotal: number;
   grandTotal: number;
   paid: number;
@@ -34,9 +40,16 @@ export function PaymentForm({
   const splitReady = cash !== null && transfer !== null && cash > 0 && transfer > 0 && cash + transfer === due;
   const singleReady = amount !== null && amount > 0 && amount <= due;
   const canSubmit = discountReady && (due === 0 || (method === "SPLIT" ? splitReady : singleReady));
+  const shownDiscount = discount !== null && discount <= subtotal ? discount : currentDiscount;
+  const displayLines = [
+    ...lines,
+    ...(shownDiscount > 0 ? [{ name: "Diskon", quantity: 1, amount: -shownDiscount }] : []),
+    ...(paid > 0 ? [{ name: "Sudah dibayar", quantity: 1, amount: -paid }] : []),
+  ];
 
   return (
     <form action={recordPaymentAction} className="no-print grid gap-3 rounded-2xl border border-line bg-ivory p-4">
+      <CustomerBillSync bill={{ clientName, lines: displayLines, total: Math.max(subtotal - shownDiscount - paid, 0) }} />
       <input type="hidden" name="invoiceId" value={invoiceId} />
       <input type="hidden" name="idempotencyKey" value={key} />
       <input type="hidden" name="discount" value={discount ?? 0} />
