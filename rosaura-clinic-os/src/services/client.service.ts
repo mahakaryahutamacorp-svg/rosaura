@@ -6,7 +6,7 @@ import { writeAudit } from "@/services/audit";
 
 const CLIENT_PAGE_SIZE = 25;
 
-export async function listClients(query: string, page: number) {
+export async function listClients(query: string, page: number, includePhone = false) {
   const clients = await prisma.client.findMany({
     include: { _count: { select: { skinRecords: true } } },
     orderBy: { fullName: "asc" },
@@ -14,7 +14,10 @@ export async function listClients(query: string, page: number) {
   const term = query.trim().toLowerCase();
   const filtered = term
     ? clients.filter((client) =>
-        [client.fullName, client.clientCode, client.phone, client.address].join(" ").toLowerCase().includes(term),
+        [client.fullName, client.clientCode, includePhone ? client.phone : "", client.address]
+          .join(" ")
+          .toLowerCase()
+          .includes(term),
       )
     : clients;
   const safePage = Number.isFinite(page) && page > 0 ? Math.floor(page) : 1;
@@ -36,6 +39,29 @@ export async function getClientProfile(clientId: string) {
         include: { photos: { orderBy: { createdAt: "asc" } } },
       },
     },
+  });
+}
+
+export async function listClientRows(includePhone: boolean) {
+  return prisma.client.findMany({
+    orderBy: { fullName: "asc" },
+    select: {
+      id: true,
+      fullName: true,
+      clientCode: true,
+      dateOfBirth: true,
+      isActive: true,
+      phone: includePhone,
+      _count: { select: { skinRecords: true } },
+    },
+  });
+}
+
+export async function listClientOptions() {
+  return prisma.client.findMany({
+    where: { isActive: true },
+    orderBy: { fullName: "asc" },
+    select: { id: true, fullName: true, clientCode: true },
   });
 }
 

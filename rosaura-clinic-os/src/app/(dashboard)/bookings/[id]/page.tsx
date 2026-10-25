@@ -9,7 +9,7 @@ import {
 } from "@/app/actions/operations";
 import { Flash } from "@/components/Flash";
 import { StatusBadge } from "@/components/StatusBadge";
-import { canBill, canBook, canOperateBooking, canSeeClinical, isOwner, requireUser } from "@/lib/access";
+import { canBill, canBook, canEditClinical, canOperateBooking, requireUser } from "@/lib/access";
 import { ServiceError } from "@/lib/errors";
 import { formatRupiah } from "@/lib/format";
 import { paymentLabel } from "@/lib/labels";
@@ -66,7 +66,7 @@ export default async function BookingDetailPage({
 
   const therapistId = booking.assignments[0]?.employeeId ?? "";
   const canOperate = canOperateBooking(user, therapistId);
-  const showClinical = canSeeClinical(user) && (isOwner(user) || user.employeeId === booking.visit?.providerId || user.employeeId === therapistId);
+  const showClinical = canEditClinical(user, booking.visit?.providerId ?? "", therapistId);
   const [therapists, rooms, batches] = await Promise.all([
     listTherapists(),
     listRooms(),

@@ -49,43 +49,22 @@ async function main() {
     name: string,
     position: string,
     email: string,
-    role: (typeof roleNames)[number],
-    phone: string,
+    assigned: (typeof roleNames)[number][],
   ) {
     const employee = await prisma.employee.create({
-      data: { employeeCode: code, name, position, phone },
+      data: { employeeCode: code, name, position },
     });
     const user = await prisma.user.create({
       data: { employeeId: employee.id, email, passwordHash, isActive: true },
     });
-    await prisma.employeeRole.create({ data: { employeeId: employee.id, roleId: roles[role].id } });
+    await prisma.employeeRole.createMany({
+      data: assigned.map((role) => ({ employeeId: employee.id, roleId: roles[role].id })),
+    });
     return { employee, user };
   }
 
-  const lidya = await addEmployee("EMP-01", "Lidya Rosa", "Pemilik", "lidya@rosaura.local", "OWNER", "081100000001");
-  const rina = await addEmployee("EMP-02", "Rina Kusuma", "Resepsionis", "rina@rosaura.local", "FRONT_OFFICE", "081100000002");
-  const sinta = await addEmployee("EMP-03", "Sinta Ayu", "Terapis", "sinta@rosaura.local", "CLINICAL", "081100000003");
-  const maya = await addEmployee("EMP-04", "Maya Putri", "Terapis", "maya@rosaura.local", "CLINICAL", "081100000004");
-  const dimas = await addEmployee("EMP-05", "Dimas Pratama", "Terapis", "dimas@rosaura.local", "CLINICAL", "081100000005");
-  const agus = await addEmployee("EMP-06", "Agus Salim", "Petugas gudang", "agus@rosaura.local", "WAREHOUSE", "081100000006");
-
-  const services = {
-    facial: await prisma.service.create({
-      data: { code: "FAC-60", name: "Facial Treatment", durationMinutes: 60, price: 350000 },
-    }),
-    acne: await prisma.service.create({
-      data: { code: "ACN-45", name: "Acne Peel", durationMinutes: 45, price: 450000 },
-    }),
-    bright: await prisma.service.create({
-      data: { code: "BRT-90", name: "Brightening Facial", durationMinutes: 90, price: 550000 },
-    }),
-    massage: await prisma.service.create({
-      data: { code: "BDY-60", name: "Body Massage", durationMinutes: 60, price: 300000 },
-    }),
-    led: await prisma.service.create({
-      data: { code: "LED-30", name: "LED Therapy", durationMinutes: 30, price: 275000 },
-    }),
-  };
+  const gita = await addEmployee("DOK-01", "Gita", "Dokter", "gita@rosaura.id", ["OWNER", "CLINICAL"]);
+  const admin = await addEmployee("ADM-01", "Admin", "Admin", "admin@rosaura.id", ["FRONT_OFFICE", "WAREHOUSE"]);
 
   const rooms = {
     bed1: await prisma.room.create({ data: { name: "Bed 1" } }),
@@ -93,10 +72,10 @@ async function main() {
     bed3: await prisma.room.create({ data: { name: "Bed 3" } }),
   };
 
-  const summary = await importClinicData(prisma, lidya.user.id);
+  const summary = await importClinicData(prisma, gita.user.id);
   await prisma.auditLog.create({
     data: {
-      actorUserId: lidya.user.id,
+      actorUserId: gita.user.id,
       action: "SEED",
       entityType: "system",
       entityId: "local",
@@ -106,15 +85,13 @@ async function main() {
 
   console.log(
     "Staf " +
-      [lidya, rina, sinta, maya, dimas, agus].length +
-      ", layanan " +
-      Object.keys(services).length +
-      ", ruang " +
+      [gita, admin].length +
+      ", layanan 0, ruang " +
       Object.keys(rooms).length,
   );
   console.log(summary);
   console.log("Masuk dengan kata sandi rosaura123.");
-  console.log("lidya@rosaura.local · rina@rosaura.local · sinta@rosaura.local · agus@rosaura.local");
+  console.log("gita@rosaura.id · admin@rosaura.id");
 }
 
 main()

@@ -233,7 +233,7 @@ export function BookingDesk({
                 >
                   {clients.map((client) => (
                     <option key={client.id} value={client.id}>
-                      {client.name} · {client.phone}
+                      {client.phone ? `${client.name} · ${client.phone}` : `${client.name} · ${client.clientCode}`}
                     </option>
                   ))}
                 </select>

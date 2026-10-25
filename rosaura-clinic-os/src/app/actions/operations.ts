@@ -6,11 +6,11 @@ import { requireUser } from "@/lib/access";
 import { ServiceError } from "@/lib/errors";
 import { z } from "zod";
 import { changeBookingStatus, createBooking, rescheduleBooking } from "@/services/booking.service";
-import { createInvoice, recordPayment, reversePayment } from "@/services/billing.service";
+import { checkoutSale, createInvoice, recordPayment, reversePayment } from "@/services/billing.service";
 import { saveVisitNote, useMaterial } from "@/services/visit.service";
 import { createClient, setClientActive } from "@/services/client.service";
-import { createService, setServiceActive } from "@/services/catalog.service";
-import { adjustStock, receiveStock } from "@/services/inventory.service";
+import { createService, deleteService, setServiceActive, updateService } from "@/services/catalog.service";
+import { adjustStock, createProduct, deleteProduct, receiveStock, updateProduct } from "@/services/inventory.service";
 import { updateEmployeeAccess } from "@/services/employee.service";
 
 export interface ActionResult {
@@ -155,7 +155,9 @@ export async function recordPaymentAction(formData: FormData) {
     await recordPayment(user, {
       invoiceId,
       method: String(formData.get("method") ?? ""),
-      amount: Number(formData.get("amount")),
+      amount: Number(formData.get("amount") || 0),
+      transferAmount: Number(formData.get("transferAmount") || 0),
+      discount: Number(formData.get("discount") || 0),
       idempotencyKey: String(formData.get("idempotencyKey") ?? ""),
     });
     refresh();
@@ -164,6 +166,41 @@ export async function recordPaymentAction(formData: FormData) {
     bounce(`/billing/${invoiceId}`, error);
   }
   redirect(`/billing/${invoiceId}?notice=${encodeURIComponent("Pembayaran tercatat.")}`);
+}
+
+export async function checkoutSaleAction(_state: ActionResult, formData: FormData): Promise<ActionResult> {
+  let lines: Array<{ kind: "product" | "service"; id: string; quantity: number }> = [];
+  try {
+    const parsed = JSON.parse(String(formData.get("lines") ?? "[]")) as unknown;
+    if (!Array.isArray(parsed)) throw new Error("invalid");
+    lines = parsed.map((line) => {
+      const item = line as { kind?: unknown; id?: unknown; productId?: unknown; quantity?: unknown };
+      const kind = item.kind === "service" ? "service" : "product";
+      return { kind, id: String(item.id ?? item.productId ?? ""), quantity: Number(item.quantity) };
+    });
+  } catch {
+    return { ok: false, message: "Keranjang tidak valid." };
+  }
+
+  try {
+    const user = await requireUser();
+    const invoice = await checkoutSale(user, {
+      clientId: String(formData.get("clientId") ?? ""),
+      lines,
+      discount: Number(formData.get("discount") || 0),
+      method: String(formData.get("method") ?? ""),
+      amount: Number(formData.get("amount") || 0),
+      transferAmount: Number(formData.get("transferAmount") || 0),
+      idempotencyKey: String(formData.get("idempotencyKey") ?? ""),
+    });
+    refresh();
+    revalidatePath(`/billing/${invoice.id}`);
+    const stockNote = lines.some((line) => line.kind === "product") ? " Stok produk sudah dipotong." : "";
+    redirect(`/billing/${invoice.id}?notice=${encodeURIComponent(`Penjualan tersimpan.${stockNote}`)}`);
+  } catch (error) {
+    if (error instanceof ServiceError) return { ok: false, message: error.message };
+    throw error;
+  }
 }
 
 export async function reversePaymentAction(formData: FormData) {
@@ -220,6 +257,79 @@ export async function createServiceAction(formData: FormData) {
     bounce("/services", error);
   }
   redirect("/services?notice=" + encodeURIComponent("Layanan ditambahkan."));
+}
+
+export async function updateServiceAction(formData: FormData) {
+  try {
+    const user = await requireUser();
+    await updateService(user, {
+      serviceId: String(formData.get("serviceId") ?? ""),
+      code: String(formData.get("code") ?? ""),
+      name: String(formData.get("name") ?? ""),
+      durationMinutes: Number(formData.get("durationMinutes")),
+      price: Number(formData.get("price")),
+    });
+    refresh();
+  } catch (error) {
+    bounce("/services", error);
+  }
+  redirect("/services?notice=" + encodeURIComponent("Layanan diperbarui."));
+}
+
+export async function deleteServiceAction(formData: FormData) {
+  try {
+    const user = await requireUser();
+    await deleteService(user, String(formData.get("serviceId") ?? ""));
+    refresh();
+  } catch (error) {
+    bounce("/services", error);
+  }
+  redirect("/services?notice=" + encodeURIComponent("Layanan dihapus."));
+}
+
+export async function createProductAction(formData: FormData) {
+  try {
+    const user = await requireUser();
+    await createProduct(user, {
+      name: String(formData.get("name") ?? ""),
+      category: String(formData.get("category") ?? ""),
+      sellPrice: Number(formData.get("sellPrice")),
+      quantity: Number(formData.get("quantity") || 0),
+      unit: String(formData.get("unit") ?? "pcs"),
+    });
+    refresh();
+  } catch (error) {
+    bounce("/inventory", error);
+  }
+  redirect("/inventory?notice=" + encodeURIComponent("Produk ditambahkan."));
+}
+
+export async function updateProductAction(formData: FormData) {
+  try {
+    const user = await requireUser();
+    await updateProduct(user, {
+      productId: String(formData.get("productId") ?? ""),
+      name: String(formData.get("name") ?? ""),
+      category: String(formData.get("category") ?? ""),
+      sellPrice: Number(formData.get("sellPrice")),
+      unit: String(formData.get("unit") ?? "pcs"),
+    });
+    refresh();
+  } catch (error) {
+    bounce("/inventory", error);
+  }
+  redirect("/inventory?notice=" + encodeURIComponent("Produk diperbarui."));
+}
+
+export async function deleteProductAction(formData: FormData) {
+  try {
+    const user = await requireUser();
+    await deleteProduct(user, String(formData.get("productId") ?? ""));
+    refresh();
+  } catch (error) {
+    bounce("/inventory", error);
+  }
+  redirect("/inventory?notice=" + encodeURIComponent("Produk dihapus."));
 }
 
 export async function setServiceActiveAction(formData: FormData) {

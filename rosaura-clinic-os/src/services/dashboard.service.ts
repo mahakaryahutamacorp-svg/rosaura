@@ -84,7 +84,7 @@ export async function getDashboard(user: AppUser) {
     waiting: bookings.filter((booking) => ["BOOKED", "CONFIRMED"].includes(booking.status)).length,
     openInvoices,
     rows: bookings.map(toQueue),
-    recent: await recentVisits(false),
+    recent: await recentVisits(true),
   };
 }
 

@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { addVisitPhotosAction, createSkinVisitAction, removeVisitPhotoAction } from "@/app/actions/clinical-photos";
 import { Flash } from "@/components/Flash";
 import { PhotoProgress } from "@/components/clinical/PhotoProgress";
-import { can, canSeeClinical, requireUser } from "@/lib/access";
+import { can, canSeeClientPhone, canSeeClinical, requireUser } from "@/lib/access";
 import { fieldClass, labelClass, primaryButton, quietButton } from "@/lib/styles";
 import { formatDateOnlyUtc, formatLongDate, todayJakarta } from "@/lib/time";
 import { getClientProfile } from "@/services/client.service";
@@ -40,7 +40,7 @@ export default async function ClientDetailPage({
         <p className="text-sm text-muted">
           {client.clientCode}
           {client.gender ? ` · ${client.gender}` : ""}
-          {client.phone ? ` · ${client.phone}` : ""}
+          {canSeeClientPhone(user) && client.phone ? ` · ${client.phone}` : ""}
         </p>
       </div>
 

@@ -21,10 +21,10 @@ export const statusClass: Record<string, string> = {
 };
 
 export const roleLabel: Record<string, string> = {
-  OWNER: "Owner",
-  FRONT_OFFICE: "Front Office",
+  OWNER: "Dokter",
+  FRONT_OFFICE: "Admin",
   CLINICAL: "Klinis",
-  WAREHOUSE: "Gudang",
+  WAREHOUSE: "Produk",
 };
 
 export const paymentLabel: Record<string, string> = {

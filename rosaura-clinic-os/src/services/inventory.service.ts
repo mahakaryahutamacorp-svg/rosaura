@@ -1,15 +1,17 @@
 import { prisma } from "@/lib/db";
 import { ServiceError } from "@/lib/errors";
 import type { AppUser } from "@/lib/access";
-import { canAdjustStock } from "@/lib/access";
+import { canAdjustStock, canManageCatalog } from "@/lib/access";
+import { normalizeCatalogName } from "@/lib/catalog-name";
 import { isExpired, todayJakarta } from "@/lib/time";
 import { writeAudit } from "@/services/audit";
 
 export async function listInventory() {
   const [products, movements] = await Promise.all([
     prisma.product.findMany({
+      where: { isActive: true },
       include: { category: true, batches: { orderBy: { expiryDate: "asc" } } },
-      orderBy: { name: "asc" },
+      orderBy: [{ category: { name: "asc" } }, { name: "asc" }],
     }),
     prisma.stockMovement.findMany({
       include: { product: true, batch: true, createdBy: { include: { employee: true } } },
@@ -35,7 +37,111 @@ export async function usableBatchOptions() {
 }
 
 function assertStockRole(actor: AppUser) {
-  if (!canAdjustStock(actor)) throw new ServiceError("Penyesuaian stok hanya untuk gudang atau owner");
+  if (!canAdjustStock(actor)) throw new ServiceError("Penerimaan dan koreksi stok untuk admin atau gudang");
+}
+
+function assertCatalog(actor: AppUser) {
+  if (!canManageCatalog(actor)) throw new ServiceError("Anda tidak dapat mengubah katalog produk");
+}
+
+async function categoryIdFor(name: string) {
+  const trimmed = name.trim();
+  if (trimmed.length < 2) throw new ServiceError("Nama kategori terlalu pendek");
+  const existing = await prisma.productCategory.findFirst({ where: { name: trimmed } });
+  if (existing) return existing.id;
+  const created = await prisma.productCategory.create({ data: { name: trimmed } });
+  return created.id;
+}
+
+export async function createProduct(
+  actor: AppUser,
+  input: { name: string; category: string; sellPrice: number; quantity: number; unit: string },
+) {
+  assertCatalog(actor);
+  const name = input.name.trim();
+  const unit = input.unit.trim() || "pcs";
+  if (name.length < 2) throw new ServiceError("Nama produk terlalu pendek");
+  if (!Number.isInteger(input.sellPrice) || input.sellPrice < 0) throw new ServiceError("Harga produk tidak valid");
+  if (!Number.isInteger(input.quantity) || input.quantity < 0) throw new ServiceError("Stok awal tidak valid");
+  const key = normalizeCatalogName(name);
+  const existing = await prisma.product.findMany({ where: { isActive: true }, select: { name: true } });
+  if (existing.some((product) => normalizeCatalogName(product.name) === key)) {
+    throw new ServiceError("Produk dengan nama ini sudah ada");
+  }
+  const categoryId = await categoryIdFor(input.category);
+
+  return prisma.$transaction(async (tx) => {
+    const product = await tx.product.create({
+      data: {
+        sku: `PRD-${Date.now().toString(36).toUpperCase()}`,
+        name,
+        categoryId,
+        unit,
+        sellPrice: input.sellPrice,
+        qtyOnHand: input.quantity,
+        trackBatch: false,
+      },
+    });
+    if (input.quantity > 0) {
+      await tx.stockMovement.create({
+        data: {
+          productId: product.id,
+          movementType: "RECEIPT",
+          quantity: input.quantity,
+          reason: "Stok awal produk baru",
+          createdById: actor.userId,
+        },
+      });
+    }
+    await writeAudit(tx, actor.userId, "CREATE_PRODUCT", "product", product.id, product.name);
+    return product;
+  });
+}
+
+export async function updateProduct(
+  actor: AppUser,
+  input: { productId: string; name: string; category: string; sellPrice: number; unit: string },
+) {
+  assertCatalog(actor);
+  const name = input.name.trim();
+  const unit = input.unit.trim() || "pcs";
+  if (name.length < 2) throw new ServiceError("Nama produk terlalu pendek");
+  if (!Number.isInteger(input.sellPrice) || input.sellPrice < 0) throw new ServiceError("Harga produk tidak valid");
+  const key = normalizeCatalogName(name);
+  const existing = await prisma.product.findMany({
+    where: { isActive: true, NOT: { id: input.productId } },
+    select: { name: true },
+  });
+  if (existing.some((product) => normalizeCatalogName(product.name) === key)) {
+    throw new ServiceError("Produk dengan nama ini sudah ada");
+  }
+  const categoryId = await categoryIdFor(input.category);
+  const product = await prisma.product.update({
+    where: { id: input.productId },
+    data: { name, categoryId, unit, sellPrice: input.sellPrice },
+  });
+  await writeAudit(prisma, actor.userId, "UPDATE_PRODUCT", "product", product.id, product.name);
+  return product;
+}
+
+export async function deleteProduct(actor: AppUser, productId: string) {
+  assertCatalog(actor);
+  const product = await prisma.product.findUnique({ where: { id: productId }, include: { batches: true } });
+  if (!product) throw new ServiceError("Produk tidak ditemukan");
+  const used = product.batches.length
+    ? await prisma.materialUsage.count({ where: { stockBatchId: { in: product.batches.map((batch) => batch.id) } } })
+    : 0;
+  if (used > 0) {
+    await prisma.product.update({ where: { id: productId }, data: { isActive: false } });
+    throw new ServiceError("Produk sudah dipakai di kunjungan, jadi hanya disembunyikan");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.stockMovement.deleteMany({ where: { productId } });
+    await tx.stockBatch.deleteMany({ where: { productId } });
+    await tx.product.delete({ where: { id: productId } });
+    await writeAudit(tx, actor.userId, "DELETE_PRODUCT", "product", productId, product.name);
+  });
 }
 
 export async function receiveStock(

@@ -1,14 +1,14 @@
 import { prisma } from "@/lib/db";
 import { ServiceError } from "@/lib/errors";
 import type { AppUser } from "@/lib/access";
-import { canSeeClinical, isOwner } from "@/lib/access";
+import { can, canSeeClinical, isOwner } from "@/lib/access";
 import { isExpired, todayJakarta } from "@/lib/time";
 import { writeAudit } from "@/services/audit";
 
 function assertNoteAccess(actor: AppUser, providerId: string) {
-  if (isOwner(actor)) return;
+  if (isOwner(actor) || can(actor, ["FRONT_OFFICE"])) return;
   if (actor.roles.includes("CLINICAL") && actor.employeeId === providerId) return;
-  throw new ServiceError("Catatan kunjungan hanya diisi petugas yang menangani atau owner");
+  throw new ServiceError("Catatan kunjungan hanya diisi dokter, admin, atau petugas yang menangani");
 }
 
 export async function saveVisitNote(

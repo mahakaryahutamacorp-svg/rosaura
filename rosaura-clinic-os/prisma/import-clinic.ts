@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import path from "node:path";
 import type { PrismaClient } from "@prisma/client";
+import { normalizeCatalogName, preferDisplayName } from "../src/lib/catalog-name";
 
 interface LegacyPatient {
   id: string;
@@ -71,10 +72,36 @@ function dateOrNull(value: string) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+function collapseProducts(products: LegacyProduct[]) {
+  const merged = new Map<string, LegacyProduct>();
+  for (const product of products) {
+    const key = normalizeCatalogName(product.name);
+    const current = merged.get(key);
+    if (!current) {
+      merged.set(key, { ...product, name: product.name.trim() });
+      continue;
+    }
+    const name = preferDisplayName(current.name, product.name);
+    const chosen = name === product.name.trim() ? product : current;
+    const category =
+      (current.category || "").trim() === "Lainnya" && (product.category || "").trim()
+        ? product.category
+        : current.category || product.category;
+    merged.set(key, {
+      ...chosen,
+      name,
+      category,
+      stock: Math.max(Math.trunc(current.stock) || 0, Math.trunc(product.stock) || 0),
+      price: chosen.price,
+    });
+  }
+  return [...merged.values()];
+}
+
 export async function importClinicData(prisma: PrismaClient, actorUserId: string) {
   const patients = readJson<LegacyPatient>("435_patients_records.json");
   const records = readJson<LegacyRecord>("680_medical_records_records.json");
-  const products = readJson<LegacyProduct>("135_products_records.json");
+  const products = collapseProducts(readJson<LegacyProduct>("135_products_records.json"));
 
   await prisma.materialUsage.deleteMany();
   await prisma.stockMovement.deleteMany();

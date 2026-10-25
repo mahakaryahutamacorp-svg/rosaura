@@ -1,5 +1,5 @@
 import { BookingDesk } from "@/components/bookings/BookingDesk";
-import { can, canBook, requireUser } from "@/lib/access";
+import { can, canBook, canSeeClientPhone, requireUser } from "@/lib/access";
 import { dayRange, parseDay, startOfWeek, weekDays } from "@/lib/time";
 import { listBookings } from "@/services/booking.service";
 import { listActiveClients } from "@/services/client.service";
@@ -50,7 +50,7 @@ export default async function BookingsPage({
         id: client.id,
         name: client.fullName,
         clientCode: client.clientCode,
-        phone: client.phone,
+        phone: canSeeClientPhone(user) ? client.phone : "",
       }))}
       bookings={bookings.map((booking) => ({
         id: booking.id,

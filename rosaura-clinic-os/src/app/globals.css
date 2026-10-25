@@ -29,4 +29,10 @@ body {
   body {
     background: white;
   }
+
+  .receipt {
+    border: none !important;
+    margin: 0 auto;
+    max-width: 80mm;
+  }
 }

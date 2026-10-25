@@ -5,14 +5,12 @@ import { loginAction } from "@/app/actions/auth";
 import { fieldClass, labelClass, primaryButton, secondaryButton } from "@/lib/styles";
 
 const demos = [
-  { label: "Owner", email: "lidya@rosaura.local", detail: "Uang masuk dan piutang" },
-  { label: "Front Office", email: "rina@rosaura.local", detail: "Booking dan kasir" },
-  { label: "Klinis", email: "sinta@rosaura.local", detail: "Jadwal dan catatan" },
-  { label: "Gudang", email: "agus@rosaura.local", detail: "Stok dan kedaluwarsa" },
+  { label: "Dokter", email: "gita@rosaura.id", detail: "Akses penuh, termasuk nomor pasien" },
+  { label: "Admin", email: "admin@rosaura.id", detail: "Operasional, nomor pasien tersembunyi" },
 ];
 
 export function LoginForm() {
-  const [email, setEmail] = useState("rina@rosaura.local");
+  const [email, setEmail] = useState("admin@rosaura.id");
   const [password, setPassword] = useState("rosaura123");
   const [state, action, pending] = useActionState(loginAction, { error: "" });
 

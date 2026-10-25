@@ -7,6 +7,7 @@ export interface AppUser {
   employeeId: string;
   name: string;
   email: string;
+  position: string;
   roles: string[];
 }
 
@@ -18,8 +19,17 @@ export function can(user: AppUser, roles: string[]) {
   return isOwner(user) || roles.some((role) => user.roles.includes(role));
 }
 
+export function canSeeClientPhone(user: AppUser) {
+  return isOwner(user);
+}
+
 export function canSeeClinical(user: AppUser) {
-  return can(user, ["CLINICAL"]);
+  return can(user, ["CLINICAL", "FRONT_OFFICE"]);
+}
+
+export function canEditClinical(user: AppUser, providerId: string, therapistId: string) {
+  if (isOwner(user) || can(user, ["FRONT_OFFICE"])) return true;
+  return user.roles.includes("CLINICAL") && (user.employeeId === providerId || user.employeeId === therapistId);
 }
 
 export function canBill(user: AppUser) {
@@ -31,7 +41,11 @@ export function canBook(user: AppUser) {
 }
 
 export function canAdjustStock(user: AppUser) {
-  return can(user, ["WAREHOUSE"]);
+  return can(user, ["WAREHOUSE", "FRONT_OFFICE"]);
+}
+
+export function canManageCatalog(user: AppUser) {
+  return can(user, ["FRONT_OFFICE"]);
 }
 
 export function canSeeStock(user: AppUser) {
@@ -61,6 +75,7 @@ export async function requireUser(): Promise<AppUser> {
     employeeId: user.employeeId,
     name: user.employee.name,
     email: user.email,
+    position: user.employee.position,
     roles: user.employee.roles.map((item) => item.role.name),
   };
 }

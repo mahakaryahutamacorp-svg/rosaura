@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { reversePaymentAction } from "@/app/actions/operations";
 import { PaymentForm } from "@/components/billing/PaymentForm";
+import { Receipt } from "@/components/billing/Receipt";
 import { Flash } from "@/components/Flash";
 import { canBill, isOwner, requireUser } from "@/lib/access";
 import { formatRupiah } from "@/lib/format";
@@ -25,9 +26,12 @@ export default async function InvoicePage({
   const remaining = Math.max(invoice.grandTotal - paid, 0);
   const today = dayKey(new Date());
 
+  const discount = Math.max(invoice.subtotal - invoice.grandTotal, 0);
+  const saleLines = invoice.items.filter((item) => item.itemType !== "DISCOUNT");
+
   return (
     <div className="space-y-6">
-      <div>
+      <div className="no-print">
         <Link href="/billing" className="text-sm text-gold-deep">
           Semua tagihan
         </Link>
@@ -37,30 +41,42 @@ export default async function InvoicePage({
           {invoice.booking ? ` · ${invoice.booking.bookingCode}` : ""}
         </p>
       </div>
-      <Flash error={query.error} notice={query.notice} />
+      <div className="no-print">
+        <Flash error={query.error} notice={query.notice} />
+      </div>
 
-      <section className="rounded-3xl border border-line bg-paper p-5">
-        <h2 className="font-display text-2xl">Struk</h2>
-        <ul className="mt-4 divide-y divide-line text-sm">
-          {invoice.items.map((item) => (
-            <li key={item.id} className="flex justify-between gap-3 py-2">
-              <span>{item.descriptionSnapshot}</span>
-              <span>{formatRupiah(item.unitPrice * item.quantity)}</span>
-            </li>
-          ))}
-        </ul>
-        <div className="mt-4 space-y-1 text-sm">
-          <p className="flex justify-between"><span>Total tagihan</span><span>{formatRupiah(invoice.grandTotal)}</span></p>
-          <p className="flex justify-between"><span>Sudah diterima</span><span>{formatRupiah(paid)}</span></p>
-          <p className="flex justify-between font-semibold"><span>Sisa piutang</span><span>{formatRupiah(remaining)}</span></p>
-        </div>
-      </section>
+      <div className="mx-auto max-w-sm">
+        <Receipt
+          invoiceNumber={invoice.invoiceNumber}
+          clientName={invoice.client.fullName}
+          issuedAt={formatDateTime(invoice.createdAt)}
+          lines={saleLines.map((item) => ({
+            id: item.id,
+            description: item.descriptionSnapshot,
+            quantity: item.quantity,
+            amount: item.unitPrice * item.quantity,
+          }))}
+          subtotal={invoice.subtotal}
+          discount={discount}
+          total={invoice.grandTotal}
+          payments={invoice.payments
+            .filter((payment) => payment.amount > 0 && !payment.reversal)
+            .map((payment) => ({
+              id: payment.id,
+              label: paymentLabel[payment.method] ?? payment.method,
+              amount: payment.amount,
+            }))}
+          remaining={remaining}
+        />
+      </div>
 
-      {invoice.status !== "VOID" && remaining > 0 ? <PaymentForm invoiceId={invoice.id} remaining={remaining} /> : null}
+      {invoice.status !== "VOID" && remaining > 0 ? (
+        <PaymentForm invoiceId={invoice.id} subtotal={invoice.subtotal} grandTotal={invoice.grandTotal} paid={paid} />
+      ) : null}
 
-      <section className="space-y-3">
+      <section className="no-print space-y-3">
         <h2 className="font-display text-2xl">Pembayaran</h2>
-        {invoice.payments.map((payment) => (
+        {invoice.payments.filter((payment) => payment.amount > 0).map((payment) => (
           <article key={payment.id} className="rounded-2xl border border-line bg-paper p-4 text-sm">
             <p className="font-medium">
               {paymentLabel[payment.method]} · {formatRupiah(payment.amount)}

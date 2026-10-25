@@ -1,7 +1,6 @@
 import { SideNav } from "@/components/layout/SideNav";
 import { logoutAction } from "@/app/actions/auth";
 import { can, canBill, canBook, canSeeStock, isOwner, type AppUser } from "@/lib/access";
-import { roleNames } from "@/lib/labels";
 import { formatLongDate } from "@/lib/time";
 import { secondaryButton } from "@/lib/styles";
 
@@ -33,7 +32,7 @@ export function AppShell({ user, children }: { user: AppUser; children: React.Re
         <div className="hidden px-5 pb-6 md:block">
           <div className="mt-8 rounded-2xl bg-white/80 p-3">
             <p className="text-sm font-medium">{user.name}</p>
-            <p className="text-xs text-muted">{roleNames(user.roles)}</p>
+            <p className="text-xs text-muted">{user.position}</p>
           </div>
           <form action={logoutAction} className="mt-3">
             <button className={`${secondaryButton} w-full`} type="submit">
