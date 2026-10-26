@@ -53,6 +53,7 @@ const insertOrder = [
   "MaterialUsage",
   "SkinRecord",
   "ClinicalPhoto",
+  "DisplayPromo",
   "AuditLog",
 ];
 

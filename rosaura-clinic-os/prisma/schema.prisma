@@ -407,6 +407,16 @@ model CounterDisplay {
   updatedAt  DateTime @updatedAt
 }
 
+model DisplayPromo {
+  id          String   @id @default(cuid())
+  slot        String
+  contentType String
+  byteSize    Int
+  createdAt   DateTime @default(now())
+
+  @@index([slot, createdAt])
+}
+
 model AuditLog {
   id          String   @id @default(cuid())
   actorUserId String

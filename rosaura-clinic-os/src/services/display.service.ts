@@ -1,6 +1,7 @@
-import type { CustomerBill, CustomerDisplaySnapshot, DisplayLine } from "@/lib/display";
 import { prisma } from "@/lib/db";
+import { emptyDisplayPromos, type CustomerBill, type CustomerDisplaySnapshot, type DisplayLine } from "@/lib/display";
 import { dayRange, formatClock, todayJakarta } from "@/lib/time";
+import { listDisplayPromos } from "@/services/display-promo.service";
 
 const COUNTER_ID = "counter";
 const BED_NAMES = ["Bed 1", "Bed 2", "Bed 3"] as const;
@@ -70,7 +71,7 @@ function readLines(raw: string): DisplayLine[] {
 
 export async function getCustomerDisplay(): Promise<CustomerDisplaySnapshot> {
   const { start, end } = dayRange(todayJakarta());
-  const [bookings, display] = await Promise.all([
+  const [bookings, display, promos] = await Promise.all([
     prisma.booking.findMany({
       where: {
         startAt: { gte: start, lt: end },
@@ -86,6 +87,7 @@ export async function getCustomerDisplay(): Promise<CustomerDisplaySnapshot> {
       orderBy: { startAt: "asc" },
     }),
     readCounter(),
+    listDisplayPromos().catch(() => emptyDisplayPromos()),
   ]);
 
   const queue = bookings
@@ -106,7 +108,7 @@ export async function getCustomerDisplay(): Promise<CustomerDisplaySnapshot> {
     ? { clientName: maskName(display.clientName), lines: readLines(display.linesJson), total: display.total }
     : null;
 
-  return { queue, beds, bill };
+  return { queue, beds, bill, promos };
 }
 
 export async function publishCounterBill(input: CustomerBill & { stamp: string }) {
