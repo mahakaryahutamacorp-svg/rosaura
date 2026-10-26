@@ -27,7 +27,7 @@ async function main() {
     const user = existing
       ? await prisma.user.update({
           where: { id: existing.id },
-          data: { passwordHash, isActive: true, tokenVersion: { increment: 1 } },
+          data: { passwordHash, isActive: true },
         })
       : await prisma.user.create({
           data: { employeeId: employee.id, email, passwordHash, isActive: true },

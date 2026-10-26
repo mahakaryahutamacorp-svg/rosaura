@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { readSession } from "@/lib/session";
+import { readSessionUserId } from "@/lib/session";
 
 export interface AppUser {
   userId: string;
@@ -58,15 +58,15 @@ export function canOperateBooking(user: AppUser, therapistId: string) {
 }
 
 export async function requireUser(): Promise<AppUser> {
-  const session = await readSession();
-  if (!session) redirect("/login");
+  const userId = await readSessionUserId();
+  if (!userId) redirect("/login");
 
   const user = await prisma.user.findUnique({
-    where: { id: session.userId },
+    where: { id: userId },
     include: { employee: { include: { roles: { include: { role: true } } } } },
   });
 
-  if (!user || !user.isActive || !user.employee.isActive || user.tokenVersion !== session.version) {
+  if (!user || !user.isActive || !user.employee.isActive) {
     redirect("/login");
   }
 
