@@ -241,6 +241,80 @@ export async function createClientAction(formData: FormData) {
   redirect("/clients?notice=" + encodeURIComponent("Klien terdaftar."));
 }
 
+export async function quickCreateClientAction(input: {
+  fullName: string;
+  phone: string;
+  dateOfBirth?: string;
+  consent?: boolean;
+}): Promise<{
+  ok: boolean;
+  message: string;
+  client?: { id: string; name: string; clientCode: string; phone: string };
+}> {
+  try {
+    const user = await requireUser();
+    let phone = (input.phone ?? "").trim().replace(/[\s-]/g, "");
+    if (phone.startsWith("+62")) phone = "0" + phone.slice(3);
+    else if (phone.startsWith("62")) phone = "0" + phone.slice(2);
+
+    const client = await createClient(user, {
+      fullName: input.fullName,
+      phone,
+      dateOfBirth: input.dateOfBirth ?? "",
+      consent: input.consent ?? true,
+    });
+    refresh(["client"]);
+    return {
+      ok: true,
+      message: "Pasien baru berhasil didaftarkan.",
+      client: {
+        id: client.id,
+        name: client.fullName,
+        clientCode: client.clientCode,
+        phone: client.phone,
+      },
+    };
+  } catch (error) {
+    if (error instanceof ServiceError) return { ok: false, message: error.message };
+    return { ok: false, message: error instanceof Error ? error.message : "Gagal mendaftarkan pasien baru." };
+  }
+}
+
+export async function quickCreateServiceAction(input: {
+  code: string;
+  name: string;
+  durationMinutes: number;
+  price: number;
+}): Promise<{
+  ok: boolean;
+  message: string;
+  service?: { id: string; name: string; durationMinutes: number; price: number };
+}> {
+  try {
+    const user = await requireUser();
+    const service = await createService(user, {
+      code: input.code,
+      name: input.name,
+      durationMinutes: input.durationMinutes,
+      price: input.price,
+    });
+    refresh(["catalog"]);
+    return {
+      ok: true,
+      message: "Layanan baru berhasil ditambahkan.",
+      service: {
+        id: service.id,
+        name: service.name,
+        durationMinutes: service.durationMinutes,
+        price: service.price,
+      },
+    };
+  } catch (error) {
+    if (error instanceof ServiceError) return { ok: false, message: error.message };
+    return { ok: false, message: error instanceof Error ? error.message : "Gagal menambahkan layanan baru." };
+  }
+}
+
 export async function setClientActiveAction(formData: FormData) {
   try {
     const user = await requireUser();

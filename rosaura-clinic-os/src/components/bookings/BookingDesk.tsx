@@ -2,8 +2,12 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
-import { createBookingAction } from "@/app/actions/operations";
+import { useEffect, useMemo, useState } from "react";
+import {
+  createBookingAction,
+  quickCreateClientAction,
+  quickCreateServiceAction,
+} from "@/app/actions/operations";
 import { StatusBadge } from "@/components/StatusBadge";
 import { formatRupiah } from "@/lib/format";
 import { fieldClass, labelClass, primaryButton, secondaryButton } from "@/lib/styles";
@@ -90,6 +94,43 @@ export function BookingDesk({
   const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
+
+  // Daftar klien & layanan lokal untuk pembaruan instan tanpa refresh penuh
+  const [clientList, setClientList] = useState<ClientOption[]>(clients);
+  const [serviceList, setServiceList] = useState<ServiceOption[]>(services);
+
+  useEffect(() => {
+    setClientList(clients);
+  }, [clients]);
+
+  useEffect(() => {
+    setServiceList(services);
+  }, [services]);
+
+  // Mode & form Pasien Baru
+  const [showNewClient, setShowNewClient] = useState(false);
+  const [clientSearch, setClientSearch] = useState("");
+  const [newClientPending, setNewClientPending] = useState(false);
+  const [newClientError, setNewClientError] = useState("");
+  const [newClientDraft, setNewClientDraft] = useState({
+    fullName: "",
+    phone: "",
+    dateOfBirth: "",
+    consent: true,
+  });
+
+  // Mode & form Layanan Baru
+  const [showNewService, setShowNewService] = useState(false);
+  const [serviceSearch, setServiceSearch] = useState("");
+  const [newServicePending, setNewServicePending] = useState(false);
+  const [newServiceError, setNewServiceError] = useState("");
+  const [newServiceDraft, setNewServiceDraft] = useState({
+    code: "",
+    name: "",
+    durationMinutes: 60,
+    price: 150000,
+  });
+
   const [draft, setDraft] = useState({
     date,
     time: "10:00",
@@ -99,7 +140,27 @@ export function BookingDesk({
     roomId: rooms[0]?.id ?? "",
   });
 
-  const selectedService = services.find((service) => service.id === draft.serviceId);
+  // Filter klien
+  const filteredClients = useMemo(() => {
+    const q = clientSearch.trim().toLowerCase();
+    if (!q) return clientList;
+    return clientList.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) ||
+        c.clientCode.toLowerCase().includes(q) ||
+        (c.phone && c.phone.includes(q)),
+    );
+  }, [clientList, clientSearch]);
+
+  // Filter layanan
+  const filteredServices = useMemo(() => {
+    const q = serviceSearch.trim().toLowerCase();
+    if (!q) return serviceList;
+    return serviceList.filter((s) => s.name.toLowerCase().includes(q));
+  }, [serviceList, serviceSearch]);
+
+  const selectedService = serviceList.find((service) => service.id === draft.serviceId);
+
   const times = useMemo(() => {
     const values: string[] = [];
     for (let minute = START_HOUR * 60; minute < END_HOUR * 60; minute += 30) {
@@ -112,18 +173,129 @@ export function BookingDesk({
 
   function openCreate(next?: Partial<typeof draft>) {
     setError("");
+    setShowNewClient(false);
+    setShowNewService(false);
+    setNewClientError("");
+    setNewServiceError("");
+    setClientSearch("");
+    setServiceSearch("");
     setDraft((current) => ({
       ...current,
       date,
-      therapistId: lockedTherapistId ?? current.therapistId,
+      therapistId: lockedTherapistId ?? current.therapistId ?? therapists[0]?.id ?? "",
+      serviceId: current.serviceId || serviceList[0]?.id || "",
+      clientId: current.clientId || clientList[0]?.id || "",
+      roomId: current.roomId || rooms[0]?.id || "",
       ...next,
     }));
     setOpen(true);
   }
 
+  // Handler Pendaftaran Pasien Baru Instan
+  async function handleQuickCreateClient() {
+    setNewClientError("");
+    if (!newClientDraft.fullName.trim() || newClientDraft.fullName.trim().length < 3) {
+      setNewClientError("Nama lengkap minimal 3 karakter.");
+      return;
+    }
+    if (!newClientDraft.phone.trim()) {
+      setNewClientError("Nomor HP/WhatsApp wajib diisi.");
+      return;
+    }
+    if (!newClientDraft.consent) {
+      setNewClientError("Persetujuan pemrosesan data rekam medis wajib dicentang.");
+      return;
+    }
+
+    setNewClientPending(true);
+    const result = await quickCreateClientAction(newClientDraft);
+    setNewClientPending(false);
+
+    if (!result.ok || !result.client) {
+      setNewClientError(result.message);
+      return;
+    }
+
+    const created = {
+      id: result.client.id,
+      name: result.client.name,
+      clientCode: result.client.clientCode,
+      phone: result.client.phone,
+    };
+
+    setClientList((prev) => [created, ...prev.filter((c) => c.id !== created.id)]);
+    setDraft((current) => ({ ...current, clientId: created.id }));
+    setShowNewClient(false);
+    setNewClientDraft({ fullName: "", phone: "", dateOfBirth: "", consent: true });
+  }
+
+  // Handler Penambahan Layanan Baru Instan
+  async function handleQuickCreateService() {
+    setNewServiceError("");
+    const code = newServiceDraft.code.trim().toUpperCase();
+    const name = newServiceDraft.name.trim();
+
+    if (!code || code.length < 2) {
+      setNewServiceError("Kode layanan minimal 2 karakter (contoh: FAC-01).");
+      return;
+    }
+    if (!name || name.length < 3) {
+      setNewServiceError("Nama layanan minimal 3 karakter.");
+      return;
+    }
+    if (newServiceDraft.durationMinutes < 15 || newServiceDraft.durationMinutes > 240) {
+      setNewServiceError("Durasi layanan harus antara 15 dan 240 menit.");
+      return;
+    }
+    if (newServiceDraft.price <= 0) {
+      setNewServiceError("Tarif layanan harus lebih dari 0.");
+      return;
+    }
+
+    setNewServicePending(true);
+    const result = await quickCreateServiceAction({
+      code,
+      name,
+      durationMinutes: newServiceDraft.durationMinutes,
+      price: newServiceDraft.price,
+    });
+    setNewServicePending(false);
+
+    if (!result.ok || !result.service) {
+      setNewServiceError(result.message);
+      return;
+    }
+
+    const created = {
+      id: result.service.id,
+      name: result.service.name,
+      durationMinutes: result.service.durationMinutes,
+      price: result.service.price,
+    };
+
+    setServiceList((prev) => [created, ...prev.filter((s) => s.id !== created.id)]);
+    setDraft((current) => ({ ...current, serviceId: created.id }));
+    setShowNewService(false);
+    setNewServiceDraft({ code: "", name: "", durationMinutes: 60, price: 150000 });
+  }
+
   async function onSubmit(formData: FormData) {
-    setPending(true);
     setError("");
+
+    // Validasi kelengkapan sebelum submit
+    const clientId = String(formData.get("clientId") || draft.clientId || "");
+    const serviceId = String(formData.get("serviceId") || draft.serviceId || "");
+
+    if (!clientId) {
+      setError("Silakan pilih pasien atau gunakan tombol '+ Pasien Baru' di atas.");
+      return;
+    }
+    if (!serviceId) {
+      setError("Silakan pilih layanan atau gunakan tombol '+ Layanan Baru' di atas.");
+      return;
+    }
+
+    setPending(true);
     const result = await createBookingAction(formData);
     setPending(false);
     if (!result.ok) {
@@ -223,36 +395,290 @@ export function BookingDesk({
               </button>
             </div>
             <form action={onSubmit} className="grid gap-3">
-              <Field label="Klien" name="clientId">
-                <select
-                  id="clientId"
-                  name="clientId"
-                  className={fieldClass}
-                  value={draft.clientId}
-                  onChange={(event) => setDraft({ ...draft, clientId: event.target.value })}
-                >
-                  {clients.map((client) => (
-                    <option key={client.id} value={client.id}>
-                      {client.phone ? `${client.name} · ${client.phone}` : `${client.name} · ${client.clientCode}`}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Layanan" name="serviceId">
-                <select
-                  id="serviceId"
-                  name="serviceId"
-                  className={fieldClass}
-                  value={draft.serviceId}
-                  onChange={(event) => setDraft({ ...draft, serviceId: event.target.value })}
-                >
-                  {services.map((service) => (
-                    <option key={service.id} value={service.id}>
-                      {service.name} · {service.durationMinutes} mnt · {formatRupiah(service.price)}
-                    </option>
-                  ))}
-                </select>
-              </Field>
+              {/* Bagian Klien */}
+              <div>
+                <div className="mb-1 flex items-center justify-between">
+                  <label htmlFor="clientId" className={labelClass}>
+                    Klien / Pasien <span className="text-[#8a3d36]">*</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowNewClient(!showNewClient);
+                      setNewClientError("");
+                    }}
+                    className="flex items-center gap-1 rounded-lg bg-champagne/50 px-2 py-0.5 text-xs font-semibold text-gold-deep transition hover:bg-champagne hover:text-ink"
+                  >
+                    {showNewClient ? "✕ Batal (Pilih Klien)" : "+ Pasien Baru"}
+                  </button>
+                </div>
+
+                {showNewClient ? (
+                  <div className="space-y-2.5 rounded-2xl border border-gold-deep/30 bg-ivory/80 p-3.5 shadow-inner">
+                    <div className="flex items-center justify-between border-b border-line/60 pb-1.5">
+                      <p className="text-xs font-bold uppercase tracking-wider text-brown">
+                        Pendaftaran Pasien Baru
+                      </p>
+                      <span className="text-[11px] text-muted">Langsung aktif & terjadwal</span>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-medium text-ink">Nama Lengkap *</label>
+                      <input
+                        type="text"
+                        placeholder="Contoh: Siti Rahmawati"
+                        className={fieldClass}
+                        value={newClientDraft.fullName}
+                        onChange={(e) => setNewClientDraft({ ...newClientDraft, fullName: e.target.value })}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <div>
+                        <label className="text-xs font-medium text-ink">Nomor HP / WhatsApp *</label>
+                        <input
+                          type="tel"
+                          placeholder="0812xxxxxxxx"
+                          className={fieldClass}
+                          value={newClientDraft.phone}
+                          onChange={(e) => setNewClientDraft({ ...newClientDraft, phone: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-ink">Tanggal Lahir (Opsional)</label>
+                        <input
+                          type="date"
+                          className={fieldClass}
+                          value={newClientDraft.dateOfBirth}
+                          onChange={(e) => setNewClientDraft({ ...newClientDraft, dateOfBirth: e.target.value })}
+                        />
+                      </div>
+                    </div>
+
+                    <label className="flex cursor-pointer items-center gap-2 pt-1 text-xs text-ink">
+                      <input
+                        type="checkbox"
+                        checked={newClientDraft.consent}
+                        onChange={(e) => setNewClientDraft({ ...newClientDraft, consent: e.target.checked })}
+                        className="rounded accent-gold-deep"
+                      />
+                      <span>Persetujuan pemrosesan data rekam medis klinik</span>
+                    </label>
+
+                    {newClientError ? <p className="text-xs text-[#8a3d36]">{newClientError}</p> : null}
+
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        type="button"
+                        disabled={newClientPending}
+                        onClick={handleQuickCreateClient}
+                        className={`${primaryButton} flex-1 justify-center py-2 text-xs`}
+                      >
+                        {newClientPending ? "Mendaftarkan..." : "✓ Simpan & Pilih Pasien"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowNewClient(false)}
+                        className={`${secondaryButton} py-2 text-xs`}
+                      >
+                        Batal
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    {clientList.length > 5 ? (
+                      <input
+                        type="text"
+                        placeholder="🔍 Ketik untuk cari nama / no HP..."
+                        className="w-full rounded-xl border border-line bg-white/70 px-3 py-1.5 text-xs text-ink placeholder:text-muted focus:border-gold-deep focus:outline-none"
+                        value={clientSearch}
+                        onChange={(e) => setClientSearch(e.target.value)}
+                      />
+                    ) : null}
+                    <select
+                      id="clientId"
+                      name="clientId"
+                      className={fieldClass}
+                      value={draft.clientId}
+                      onChange={(event) => setDraft({ ...draft, clientId: event.target.value })}
+                    >
+                      <option value="">
+                        {filteredClients.length === 0
+                          ? "-- Pasien tidak ditemukan --"
+                          : `-- Pilih Pasien (${filteredClients.length} terdaftar) --`}
+                      </option>
+                      {filteredClients.map((client) => (
+                        <option key={client.id} value={client.id}>
+                          {client.phone ? `${client.name} · ${client.phone}` : `${client.name} · ${client.clientCode}`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              {/* Bagian Layanan */}
+              <div>
+                <div className="mb-1 flex items-center justify-between">
+                  <label htmlFor="serviceId" className={labelClass}>
+                    Layanan Treatment <span className="text-[#8a3d36]">*</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowNewService(!showNewService);
+                      setNewServiceError("");
+                    }}
+                    className="flex items-center gap-1 rounded-lg bg-champagne/50 px-2 py-0.5 text-xs font-semibold text-gold-deep transition hover:bg-champagne hover:text-ink"
+                  >
+                    {showNewService ? "✕ Batal (Pilih Layanan)" : "+ Layanan Baru"}
+                  </button>
+                </div>
+
+                {showNewService ? (
+                  <div className="space-y-2.5 rounded-2xl border border-gold-deep/30 bg-ivory/80 p-3.5 shadow-inner">
+                    <div className="flex items-center justify-between border-b border-line/60 pb-1.5">
+                      <p className="text-xs font-bold uppercase tracking-wider text-brown">
+                        Tambah Layanan Cepat
+                      </p>
+                      <span className="text-[11px] text-muted">Masuk ke katalog & langsung terpilih</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                      <div>
+                        <label className="text-xs font-medium text-ink">Kode *</label>
+                        <input
+                          type="text"
+                          placeholder="FAC-02"
+                          className={fieldClass}
+                          value={newServiceDraft.code}
+                          onChange={(e) =>
+                            setNewServiceDraft({ ...newServiceDraft, code: e.target.value.toUpperCase() })
+                          }
+                        />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label className="text-xs font-medium text-ink">Nama Layanan *</label>
+                        <input
+                          type="text"
+                          placeholder="Contoh: Laser Brightening Treatment"
+                          className={fieldClass}
+                          value={newServiceDraft.name}
+                          onChange={(e) => setNewServiceDraft({ ...newServiceDraft, name: e.target.value })}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <div>
+                        <label className="text-xs font-medium text-ink">Durasi (menit) *</label>
+                        <input
+                          type="number"
+                          min={15}
+                          max={240}
+                          step={15}
+                          className={fieldClass}
+                          value={newServiceDraft.durationMinutes}
+                          onChange={(e) =>
+                            setNewServiceDraft({ ...newServiceDraft, durationMinutes: Number(e.target.value) })
+                          }
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-ink">Tarif Layanan (Rp) *</label>
+                        <input
+                          type="number"
+                          min={0}
+                          step={10000}
+                          className={fieldClass}
+                          value={newServiceDraft.price}
+                          onChange={(e) =>
+                            setNewServiceDraft({ ...newServiceDraft, price: Number(e.target.value) })
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    {newServiceError ? <p className="text-xs text-[#8a3d36]">{newServiceError}</p> : null}
+
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        type="button"
+                        disabled={newServicePending}
+                        onClick={handleQuickCreateService}
+                        className={`${primaryButton} flex-1 justify-center py-2 text-xs`}
+                      >
+                        {newServicePending ? "Menyimpan..." : "✓ Simpan & Pilih Layanan"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowNewService(false)}
+                        className={`${secondaryButton} py-2 text-xs`}
+                      >
+                        Batal
+                      </button>
+                    </div>
+                  </div>
+                ) : serviceList.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-gold-deep/50 bg-champagne/30 p-3 text-center">
+                    <p className="text-xs font-medium text-brown">
+                      Belum ada katalog layanan di klinik.
+                    </p>
+                    <p className="mt-1 text-[11px] text-muted">
+                      Tambahkan layanan pertama Anda agar booking dapat dijadwalkan.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setShowNewService(true)}
+                      className={`${primaryButton} mt-2 text-xs py-1.5 px-3`}
+                    >
+                      + Buat Layanan Pertama
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    {serviceList.length > 5 ? (
+                      <input
+                        type="text"
+                        placeholder="🔍 Ketik untuk cari layanan..."
+                        className="w-full rounded-xl border border-line bg-white/70 px-3 py-1.5 text-xs text-ink placeholder:text-muted focus:border-gold-deep focus:outline-none"
+                        value={serviceSearch}
+                        onChange={(e) => setServiceSearch(e.target.value)}
+                      />
+                    ) : null}
+                    <select
+                      id="serviceId"
+                      name="serviceId"
+                      className={fieldClass}
+                      value={draft.serviceId}
+                      onChange={(event) => setDraft({ ...draft, serviceId: event.target.value })}
+                    >
+                      <option value="">
+                        {filteredServices.length === 0
+                          ? "-- Layanan tidak ditemukan --"
+                          : `-- Pilih Layanan (${filteredServices.length} tersedia) --`}
+                      </option>
+                      {filteredServices.map((service) => (
+                        <option key={service.id} value={service.id}>
+                          {service.name} · {service.durationMinutes} mnt · {formatRupiah(service.price)}
+                        </option>
+                      ))}
+                    </select>
+
+                    {selectedService ? (
+                      <div className="flex items-center justify-between rounded-xl bg-ivory px-3 py-1.5 text-xs text-brown">
+                        <span>
+                          Durasi: <strong>{selectedService.durationMinutes} menit</strong>
+                        </span>
+                        <span>
+                          Tarif: <strong>{formatRupiah(selectedService.price)}</strong>
+                        </span>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+              </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="Tanggal" name="date">
                   <input
