@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { SESSION_COOKIE, verifySessionToken } from "@/lib/session-token";
 
 const PROTECTED = [
   "/dashboard",
@@ -11,15 +12,24 @@ const PROTECTED = [
   "/employees",
   "/audit",
   "/clinical-photos",
+  "/display",
+  "/api/display",
 ];
 
-export function proxy(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const hasSession = request.cookies.has("rosaura_session");
+  const token = request.cookies.get(SESSION_COOKIE)?.value;
+  // Tanda tangan dan masa berlaku diverifikasi di sini, bukan sekadar cek keberadaan cookie.
+  const hasSession = Boolean(await verifySessionToken(token));
   const isProtected = PROTECTED.some((path) => pathname === path || pathname.startsWith(`${path}/`));
 
   if (isProtected && !hasSession) {
-    return NextResponse.redirect(new URL("/login", request.url));
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ message: "Perlu masuk" }, { status: 401, headers: { "Cache-Control": "no-store" } });
+    }
+    const response = NextResponse.redirect(new URL("/login", request.url));
+    if (token) response.cookies.delete(SESSION_COOKIE);
+    return response;
   }
   if (pathname === "/") {
     return NextResponse.redirect(new URL(hasSession ? "/dashboard" : "/login", request.url));

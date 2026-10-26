@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { ServiceError } from "@/lib/errors";
 import type { AppUser } from "@/lib/access";
 import { can, canOperateBooking } from "@/lib/access";
+import { nextCode } from "@/lib/codes";
 import { assertClinicHours, jakartaDateTime } from "@/lib/time";
 import { writeAudit } from "@/services/audit";
 
@@ -150,10 +151,12 @@ export async function createBooking(actor: AppUser, input: CreateBookingInput) {
     assertClinicHours(start, end);
     await assertNoClash(tx, start, end, therapist.id, room?.id ?? null);
 
-    const count = await tx.booking.count();
+    const bookingCode = await nextCode("BK", await tx.booking.count(), async (code) =>
+      Boolean(await tx.booking.findUnique({ where: { bookingCode: code }, select: { id: true } })),
+    );
     const booking = await tx.booking.create({
       data: {
-        bookingCode: `BK-${String(count + 1).padStart(4, "0")}`,
+        bookingCode,
         clientId: client.id,
         roomId: room?.id,
         startAt: start,
@@ -282,10 +285,12 @@ export async function rescheduleBooking(actor: AppUser, input: RescheduleInput) 
     await assertNoClash(tx, start, end, therapist.id, room?.id ?? null);
 
     await tx.booking.update({ where: { id: current.id }, data: { status: "RESCHEDULED" } });
-    const count = await tx.booking.count();
+    const newCode = await nextCode("BK", await tx.booking.count(), async (code) =>
+      Boolean(await tx.booking.findUnique({ where: { bookingCode: code }, select: { id: true } })),
+    );
     const created = await tx.booking.create({
       data: {
-        bookingCode: `BK-${String(count + 1).padStart(4, "0")}`,
+        bookingCode: newCode,
         clientId: current.clientId,
         roomId: room?.id,
         startAt: start,

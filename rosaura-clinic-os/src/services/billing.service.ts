@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { ServiceError } from "@/lib/errors";
 import type { AppUser } from "@/lib/access";
 import { canBill, isOwner } from "@/lib/access";
+import { nextCode } from "@/lib/codes";
 import { dayKey, isExpired, todayJakarta } from "@/lib/time";
 import { writeAudit } from "@/services/audit";
 
@@ -26,15 +27,27 @@ async function syncInvoiceStatus(tx: Prisma.TransactionClient, invoiceId: string
   }
 }
 
-export async function listInvoices() {
-  return prisma.invoice.findMany({
-    include: {
-      client: true,
-      booking: true,
-      payments: { include: { reversal: true } },
+export const INVOICE_PAGE_SIZE = 25;
+
+export async function listInvoices(page = 1) {
+  const total = await prisma.invoice.count();
+  const pages = Math.max(1, Math.ceil(total / INVOICE_PAGE_SIZE));
+  const requested = Number.isFinite(page) && page > 0 ? Math.floor(page) : 1;
+  const safePage = Math.min(requested, pages);
+  const items = await prisma.invoice.findMany({
+    select: {
+      id: true,
+      invoiceNumber: true,
+      grandTotal: true,
+      status: true,
+      client: { select: { fullName: true } },
+      payments: { select: { amount: true, status: true, reversal: { select: { id: true } } } },
     },
-    orderBy: { createdAt: "desc" },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    skip: (safePage - 1) * INVOICE_PAGE_SIZE,
+    take: INVOICE_PAGE_SIZE,
   });
+  return { items, total, page: safePage, pages };
 }
 
 export async function getInvoice(id: string) {
@@ -67,10 +80,12 @@ export async function createInvoice(actor: AppUser, bookingId: string) {
     if (!booking.visit) throw new ServiceError("Kunjungan belum tercatat");
 
     const subtotal = booking.services.reduce((sum, item) => sum + item.priceSnapshot, 0);
-    const count = await tx.invoice.count();
+    const invoiceNumber = await nextCode("INV", await tx.invoice.count(), async (code) =>
+      Boolean(await tx.invoice.findUnique({ where: { invoiceNumber: code }, select: { id: true } })),
+    );
     const invoice = await tx.invoice.create({
       data: {
-        invoiceNumber: `INV-${String(count + 1).padStart(4, "0")}`,
+        invoiceNumber,
         clientId: booking.clientId,
         bookingId: booking.id,
         visitId: booking.visit.id,
@@ -283,10 +298,12 @@ export async function checkoutSale(
     const paidNow = parts.reduce((sum, part) => sum + part.amount, 0);
     if (paidNow !== due) throw new ServiceError("Pembayaran produk harus lunas");
 
-    const count = await tx.invoice.count();
+    const invoiceNumber = await nextCode("INV", await tx.invoice.count(), async (code) =>
+      Boolean(await tx.invoice.findUnique({ where: { invoiceNumber: code }, select: { id: true } })),
+    );
     const invoice = await tx.invoice.create({
       data: {
-        invoiceNumber: `INV-${String(count + 1).padStart(4, "0")}`,
+        invoiceNumber,
         clientId: client.id,
         subtotal,
         grandTotal: due,
@@ -446,18 +463,25 @@ export async function reversePayment(actor: AppUser, paymentId: string, reason: 
 
 export async function cashInBetween(start: Date, end: Date) {
   const [payments, reversals] = await Promise.all([
-    prisma.payment.findMany({ where: { status: "SUCCESS", paidAt: { gte: start, lt: end } } }),
-    prisma.paymentReversal.findMany({ where: { createdAt: { gte: start, lt: end } } }),
+    prisma.payment.aggregate({
+      where: { status: "SUCCESS", paidAt: { gte: start, lt: end } },
+      _sum: { amount: true },
+    }),
+    prisma.paymentReversal.aggregate({
+      where: { createdAt: { gte: start, lt: end } },
+      _sum: { amount: true },
+    }),
   ]);
-  const incoming = payments.reduce((sum, payment) => sum + payment.amount, 0);
-  const outgoing = reversals.reduce((sum, reversal) => sum + reversal.amount, 0);
-  return incoming - outgoing;
+  return (payments._sum.amount ?? 0) - (reversals._sum.amount ?? 0);
 }
 
 export async function outstandingTotal() {
-  const invoices = await prisma.invoice.findMany({
-    where: { status: "OPEN" },
-    include: { payments: { include: { reversal: true } } },
-  });
-  return invoices.reduce((sum, invoice) => sum + (invoice.grandTotal - netPaid(invoice.payments)), 0);
+  const [billed, paid] = await Promise.all([
+    prisma.invoice.aggregate({ where: { status: "OPEN" }, _sum: { grandTotal: true } }),
+    prisma.payment.aggregate({
+      where: { status: "SUCCESS", reversal: { is: null }, invoice: { status: "OPEN" } },
+      _sum: { amount: true },
+    }),
+  ]);
+  return (billed._sum.grandTotal ?? 0) - (paid._sum.amount ?? 0);
 }

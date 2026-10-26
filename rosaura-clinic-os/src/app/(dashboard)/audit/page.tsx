@@ -1,15 +1,23 @@
 import { redirect } from "next/navigation";
+import { Pager } from "@/components/Pager";
 import { isOwner, requireUser } from "@/lib/access";
 import { formatDateTime } from "@/lib/time";
 import { prisma } from "@/lib/db";
 
-export default async function AuditPage() {
-  const user = await requireUser();
+const AUDIT_PAGE_SIZE = 40;
+
+export default async function AuditPage({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
+  const [user, params] = await Promise.all([requireUser(), searchParams]);
   if (!isOwner(user)) redirect("/dashboard");
+  const total = await prisma.auditLog.count();
+  const pages = Math.max(1, Math.ceil(total / AUDIT_PAGE_SIZE));
+  const requested = Number(params.page);
+  const page = Math.min(Number.isFinite(requested) && requested > 0 ? Math.floor(requested) : 1, pages);
   const logs = await prisma.auditLog.findMany({
     include: { actor: { include: { employee: true } } },
-    orderBy: { occurredAt: "desc" },
-    take: 40,
+    orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
+    skip: (page - 1) * AUDIT_PAGE_SIZE,
+    take: AUDIT_PAGE_SIZE,
   });
 
   return (
@@ -40,6 +48,7 @@ export default async function AuditPage() {
           </tbody>
         </table>
       </div>
+      <Pager basePath="/audit" page={page} pages={pages} total={total} />
     </div>
   );
 }

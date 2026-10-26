@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { CashierDesk } from "@/components/billing/CashierDesk";
 import { OpenCustomerDisplay } from "@/components/display/OpenCustomerDisplay";
 import { Flash } from "@/components/Flash";
+import { Pager } from "@/components/Pager";
 import { canBill, requireUser } from "@/lib/access";
 import { formatRupiah } from "@/lib/format";
 import { invoiceLabel } from "@/lib/labels";
@@ -12,16 +13,17 @@ import { listClientOptions } from "@/services/client.service";
 export default async function BillingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; notice?: string }>;
+  searchParams: Promise<{ error?: string; notice?: string; page?: string }>;
 }) {
   const [user, params] = await Promise.all([requireUser(), searchParams]);
   if (!canBill(user)) redirect("/dashboard");
-  const [invoices, products, services, clients] = await Promise.all([
-    listInvoices(),
+  const [invoicePage, products, services, clients] = await Promise.all([
+    listInvoices(Number(params.page)),
     listCashierProducts(),
     listCashierServices(),
     listClientOptions(),
   ]);
+  const invoices = invoicePage.items;
 
   return (
     <div className="space-y-6">
@@ -74,6 +76,7 @@ export default async function BillingPage({
           </tbody>
         </table>
       </div>
+      <Pager basePath="/billing" page={invoicePage.page} pages={invoicePage.pages} total={invoicePage.total} />
     </div>
   );
 }

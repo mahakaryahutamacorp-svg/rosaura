@@ -6,6 +6,14 @@ const COUNTER_ID = "counter";
 const BED_NAMES = ["Bed 1", "Bed 2", "Bed 3"] as const;
 const BILL_TTL_MS = 20_000;
 
+/** Layar ruang tunggu hanya menampilkan nama depan dan inisial sisanya. */
+export function maskName(fullName: string) {
+  const [first = "", ...rest] = fullName.trim().split(/\s+/).filter(Boolean);
+  if (!first) return "";
+  const initials = rest.map((part) => `${part[0]?.toUpperCase() ?? ""}.`).join(" ");
+  return initials ? `${first} ${initials}` : first;
+}
+
 function isMissingCounter(error: unknown) {
   if (!error || typeof error !== "object") return false;
   const code = "code" in error ? String(error.code) : "";
@@ -84,18 +92,18 @@ export async function getCustomerDisplay(): Promise<CustomerDisplaySnapshot> {
     .filter((booking) => booking.status === "CHECKED_IN")
     .map((booking) => ({
       id: booking.id,
-      name: booking.client.fullName,
+      name: maskName(booking.client.fullName),
       time: formatClock(booking.startAt),
     }));
 
   const beds = BED_NAMES.map((name) => {
     const occupant = [...bookings].reverse().find((booking) => booking.status === "IN_SERVICE" && booking.room?.name === name);
-    return { name, clientName: occupant?.client.fullName ?? null };
+    return { name, clientName: occupant ? maskName(occupant.client.fullName) : null };
   });
 
   const billIsFresh = Boolean(display && display.mode === "BILL" && Date.now() - display.updatedAt.getTime() < BILL_TTL_MS);
   const bill: CustomerBill | null = billIsFresh && display
-    ? { clientName: display.clientName, lines: readLines(display.linesJson), total: display.total }
+    ? { clientName: maskName(display.clientName), lines: readLines(display.linesJson), total: display.total }
     : null;
 
   return { queue, beds, bill };

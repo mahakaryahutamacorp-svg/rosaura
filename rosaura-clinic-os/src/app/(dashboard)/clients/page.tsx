@@ -1,8 +1,9 @@
 import { createClientAction } from "@/app/actions/operations";
 import { ClientDirectory } from "@/components/clients/ClientDirectory";
 import { Flash } from "@/components/Flash";
+import { Pager } from "@/components/Pager";
 import { can, canSeeClientPhone, requireUser } from "@/lib/access";
-import { fieldClass, labelClass, primaryButton } from "@/lib/styles";
+import { fieldClass, labelClass, primaryButton, secondaryButton } from "@/lib/styles";
 import { formatDateOnlyUtc } from "@/lib/time";
 import { listClientRows } from "@/services/client.service";
 import { redirect } from "next/navigation";
@@ -10,12 +11,14 @@ import { redirect } from "next/navigation";
 export default async function ClientsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; notice?: string }>;
+  searchParams: Promise<{ error?: string; notice?: string; q?: string; page?: string }>;
 }) {
   const [user, params] = await Promise.all([requireUser(), searchParams]);
   if (!can(user, ["FRONT_OFFICE", "CLINICAL"])) redirect("/dashboard");
   const showPhone = canSeeClientPhone(user);
-  const clients = await listClientRows(showPhone);
+  const query = (params.q ?? "").trim().slice(0, 80);
+  const result = await listClientRows(query, Number(params.page), showPhone);
+  const clients = result.items;
   const canEdit = can(user, ["FRONT_OFFICE"]);
 
   return (
@@ -23,7 +26,7 @@ export default async function ClientsPage({
       <div>
         <h1 className="font-display text-4xl">Klien</h1>
         <p className="text-sm text-muted">
-          {clients.length} profil. Ketik untuk menyaring, lalu gulir untuk melihat sisanya.
+          {result.total} profil{query ? ` cocok dengan "${query}"` : ""}. Ketik lalu tekan Cari untuk menyaring.
           {showPhone ? "" : " Nomor telepon hanya diisi saat pasien baru mendaftar, lalu disembunyikan."}
         </p>
       </div>
@@ -53,6 +56,22 @@ export default async function ClientsPage({
         </form>
       ) : null}
 
+      <form method="get" action="/clients" className="flex flex-wrap items-end gap-3">
+        <label className="min-w-64 flex-1">
+          <span className={labelClass}>Cari klien</span>
+          <input
+            className={fieldClass}
+            name="q"
+            defaultValue={query}
+            maxLength={80}
+            placeholder={showPhone ? "Ketik nama, kode, atau telepon" : "Ketik nama atau kode"}
+          />
+        </label>
+        <button className={secondaryButton} type="submit">
+          Cari
+        </button>
+      </form>
+
       <ClientDirectory
         canEdit={canEdit}
         clients={clients.map((client) => ({
@@ -65,6 +84,7 @@ export default async function ClientsPage({
           ...(showPhone ? { phone: client.phone ?? "" } : {}),
         }))}
       />
+      <Pager basePath="/clients" page={result.page} pages={result.pages} total={result.total} params={query ? { q: query } : {}} />
     </div>
   );
 }

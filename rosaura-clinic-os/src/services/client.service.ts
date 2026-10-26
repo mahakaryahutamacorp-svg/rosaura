@@ -1,33 +1,40 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { ServiceError } from "@/lib/errors";
 import type { AppUser } from "@/lib/access";
 import { can } from "@/lib/access";
+import { nextCode } from "@/lib/codes";
 import { writeAudit } from "@/services/audit";
 
-const CLIENT_PAGE_SIZE = 25;
+export const CLIENT_PAGE_SIZE = 25;
+
+function safePageNumber(page: number) {
+  return Number.isFinite(page) && page > 0 ? Math.floor(page) : 1;
+}
 
 export async function listClients(query: string, page: number, includePhone = false) {
-  const clients = await prisma.client.findMany({
+  const term = query.trim().slice(0, 80);
+  const where: Prisma.ClientWhereInput = term
+    ? {
+        OR: [
+          { fullName: { contains: term } },
+          { clientCode: { contains: term } },
+          { address: { contains: term } },
+          ...(includePhone ? [{ phone: { contains: term } }] : []),
+        ],
+      }
+    : {};
+  const total = await prisma.client.count({ where });
+  const pages = Math.max(1, Math.ceil(total / CLIENT_PAGE_SIZE));
+  const safePage = Math.min(safePageNumber(page), pages);
+  const items = await prisma.client.findMany({
+    where,
     include: { _count: { select: { skinRecords: true } } },
     orderBy: { fullName: "asc" },
+    skip: (safePage - 1) * CLIENT_PAGE_SIZE,
+    take: CLIENT_PAGE_SIZE,
   });
-  const term = query.trim().toLowerCase();
-  const filtered = term
-    ? clients.filter((client) =>
-        [client.fullName, client.clientCode, includePhone ? client.phone : "", client.address]
-          .join(" ")
-          .toLowerCase()
-          .includes(term),
-      )
-    : clients;
-  const safePage = Number.isFinite(page) && page > 0 ? Math.floor(page) : 1;
-  const start = (safePage - 1) * CLIENT_PAGE_SIZE;
-  return {
-    total: filtered.length,
-    page: safePage,
-    pageSize: CLIENT_PAGE_SIZE,
-    items: filtered.slice(start, start + CLIENT_PAGE_SIZE),
-  };
+  return { total, page: safePage, pages, pageSize: CLIENT_PAGE_SIZE, items };
 }
 
 export async function getClientProfile(clientId: string) {
@@ -42,9 +49,25 @@ export async function getClientProfile(clientId: string) {
   });
 }
 
-export async function listClientRows(includePhone: boolean) {
-  return prisma.client.findMany({
-    orderBy: { fullName: "asc" },
+export async function listClientRows(query: string, page: number, includePhone: boolean) {
+  const term = query.trim().slice(0, 80);
+  const where: Prisma.ClientWhereInput = term
+    ? {
+        OR: [
+          { fullName: { contains: term } },
+          { clientCode: { contains: term } },
+          ...(includePhone ? [{ phone: { contains: term } }] : []),
+        ],
+      }
+    : {};
+  const total = await prisma.client.count({ where });
+  const pages = Math.max(1, Math.ceil(total / CLIENT_PAGE_SIZE));
+  const safePage = Math.min(safePageNumber(page), pages);
+  const items = await prisma.client.findMany({
+    where,
+    orderBy: [{ fullName: "asc" }, { id: "asc" }],
+    skip: (safePage - 1) * CLIENT_PAGE_SIZE,
+    take: CLIENT_PAGE_SIZE,
     select: {
       id: true,
       fullName: true,
@@ -55,6 +78,7 @@ export async function listClientRows(includePhone: boolean) {
       _count: { select: { skinRecords: true } },
     },
   });
+  return { total, page: safePage, pages, items };
 }
 
 export async function listClientOptions() {
@@ -90,10 +114,12 @@ export async function createClient(
     throw new ServiceError(`Nomor ini sudah terdaftar pada ${duplicate.fullName} (${duplicate.clientCode})`);
   }
 
-  const count = await prisma.client.count();
+  const clientCode = await nextCode("CL", await prisma.client.count(), async (code) =>
+    Boolean(await prisma.client.findUnique({ where: { clientCode: code }, select: { id: true } })),
+  );
   const client = await prisma.client.create({
     data: {
-      clientCode: `CL-${String(count + 1).padStart(4, "0")}`,
+      clientCode,
       fullName,
       phone,
       dateOfBirth: input.dateOfBirth ? new Date(`${input.dateOfBirth}T00:00:00.000Z`) : null,
