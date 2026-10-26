@@ -16,6 +16,7 @@ const HOTLINE = "/display/hotline.jpg?v=2";
 const REVIEW = "/display/review.jpg?v=2";
 const POLL_MS = 5000;
 const PROMO_ROTATE_MS = 5000;
+const PROMO_FADE_MS = 1100;
 
 interface Slide {
   key: string;
@@ -56,7 +57,6 @@ export function CustomerDisplay({ initial }: { initial: CustomerDisplaySnapshot 
   }, []);
 
   const rememberPromos = useCallback((slot: DisplayPromoSlot, photos: DisplayPromoSlide[]) => {
-    revision.current += 1;
     setSnapshot((current) => ({
       ...current,
       promos: {
@@ -71,7 +71,6 @@ export function CustomerDisplay({ initial }: { initial: CustomerDisplaySnapshot 
   }, [reload]);
 
   const forgetPromo = useCallback((slot: DisplayPromoSlot, photoId: string) => {
-    revision.current += 1;
     setSnapshot((current) => ({
       ...current,
       promos: {
@@ -271,6 +270,14 @@ function QrCard({
   const previousCount = useRef(promos.length);
   const safeIndex = slides.length === 0 ? 0 : index % slides.length;
   const current = slides[safeIndex];
+  const [shownIndex, setShownIndex] = useState(safeIndex);
+  const [underIndex, setUnderIndex] = useState(safeIndex);
+
+  useEffect(() => {
+    setShownIndex(safeIndex);
+    const timer = window.setTimeout(() => setUnderIndex(safeIndex), PROMO_FADE_MS);
+    return () => window.clearTimeout(timer);
+  }, [safeIndex]);
 
   useEffect(() => {
     if (promos.length > previousCount.current) setIndex(promos.length);
@@ -327,18 +334,26 @@ function QrCard({
 
   return (
     <figure className="flex min-h-0 flex-col rounded-[1.5rem] border border-line bg-white px-3 pt-3 pb-2">
-      <div className="relative min-h-0 flex-1">
-        {slides.map((slide, slideIndex) => (
-          <img
-            key={slide.key}
-            src={slide.src}
-            alt={slideIndex === safeIndex ? slide.alt : ""}
-            aria-hidden={slideIndex !== safeIndex}
-            className={`absolute inset-0 h-full w-full object-contain transition-opacity duration-700 ${
-              slideIndex === safeIndex ? "opacity-100" : "pointer-events-none opacity-0"
-            }`}
-          />
-        ))}
+      <div className="relative min-h-0 flex-1 overflow-hidden">
+        {slides.map((slide, slideIndex) => {
+          const entering = slideIndex === shownIndex;
+          const holding = slideIndex === underIndex && !entering;
+          return (
+            <img
+              key={slide.key}
+              src={slide.src}
+              alt={entering ? slide.alt : ""}
+              aria-hidden={!entering}
+              className={`absolute inset-0 h-full w-full object-contain transition-opacity duration-[1100ms] ease-[cubic-bezier(0.22,_1,_0.36,_1)] ${
+                entering
+                  ? "z-[1] opacity-100"
+                  : holding
+                    ? "z-0 opacity-100"
+                    : "pointer-events-none z-0 opacity-0"
+              }`}
+            />
+          );
+        })}
         {slides.length > 1 ? (
           <div className="pointer-events-none absolute inset-x-0 bottom-1.5 flex justify-center">
             <div className="flex gap-1 rounded-full bg-white/85 px-2 py-1">
