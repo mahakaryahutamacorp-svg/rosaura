@@ -8,6 +8,7 @@ import { formatClock } from "@/lib/time";
 const QRIS = "/display/qris.jpg?v=2";
 const HOTLINE = "/display/hotline.jpg?v=2";
 const REVIEW = "/display/review.jpg?v=2";
+const POLL_MS = 5000;
 
 export function CustomerDisplay({ initial }: { initial: CustomerDisplaySnapshot }) {
   const [snapshot, setSnapshot] = useState(initial);
@@ -29,12 +30,18 @@ export function CustomerDisplay({ initial }: { initial: CustomerDisplaySnapshot 
       }
     }
 
-    const poll = window.setInterval(() => void load(), 2000);
+    function loadWhenVisible() {
+      if (document.visibilityState === "visible") void load();
+    }
+
+    const poll = window.setInterval(loadWhenVisible, POLL_MS);
     const ticker = window.setInterval(() => setClock(formatClock(new Date())), 1000);
+    document.addEventListener("visibilitychange", loadWhenVisible);
     return () => {
       stopped = true;
       window.clearInterval(poll);
       window.clearInterval(ticker);
+      document.removeEventListener("visibilitychange", loadWhenVisible);
     };
   }, []);
 

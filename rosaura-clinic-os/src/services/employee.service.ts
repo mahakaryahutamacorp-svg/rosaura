@@ -34,7 +34,9 @@ export async function updateEmployeeAccess(
     if (!employee?.user) throw new ServiceError("Karyawan tidak ditemukan");
     const roleRows = await tx.role.findMany({ where: { name: { in: roles } } });
     await tx.employee.update({ where: { id: employeeId }, data: { isActive } });
-    await tx.user.update({ where: { id: employee.user.id }, data: { isActive } });
+    // Perubahan akses mencabut sesi lama karyawan itu; sesi owner yang sedang menyimpan dibiarkan.
+    const revoke = employeeId !== actor.employeeId ? { tokenVersion: { increment: 1 } } : {};
+    await tx.user.update({ where: { id: employee.user.id }, data: { isActive, ...revoke } });
     await tx.employeeRole.deleteMany({ where: { employeeId } });
     await tx.employeeRole.createMany({
       data: roleRows.map((role) => ({ employeeId, roleId: role.id })),

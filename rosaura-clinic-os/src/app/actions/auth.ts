@@ -4,14 +4,11 @@ import bcrypt from "bcryptjs";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { clearSession, createSession } from "@/lib/session";
+import { clearSession, createSession, readSession } from "@/lib/session";
 
 const WINDOW_MS = 10 * 60 * 1000;
 const MAX_PER_IP_EMAIL = 5;
 const MAX_PER_EMAIL = 15;
-const MAX_TRACKED = 2000;
-
-const attempts = new Map<string, { count: number; resetAt: number }>();
 
 // Hash tiruan agar waktu respons sama baik email terdaftar maupun tidak.
 let dummyHash: string | null = null;
@@ -20,31 +17,27 @@ function fakeHash() {
   return dummyHash;
 }
 
-function prune(now: number) {
-  if (attempts.size < MAX_TRACKED) return;
-  for (const [key, value] of attempts) {
-    if (value.resetAt <= now) attempts.delete(key);
-  }
-  // Bila masih penuh (serangan email acak), buang entri tertua agar memori tidak membengkak.
-  while (attempts.size >= MAX_TRACKED) {
-    const oldest = attempts.keys().next().value;
-    if (oldest === undefined) break;
-    attempts.delete(oldest);
-  }
+// Pencatat percobaan disimpan di database: bertahan saat server restart dan berlaku
+// walau aplikasi berjalan di lebih dari satu proses.
+async function isBlocked(ipKey: string, emailKey: string, now: Date) {
+  const rows = await prisma.loginAttempt.findMany({
+    where: { key: { in: [ipKey, emailKey] }, resetAt: { gt: now } },
+  });
+  return rows.some((row) => row.count >= (row.key === ipKey ? MAX_PER_IP_EMAIL : MAX_PER_EMAIL));
 }
 
-function blocked(key: string, limit: number, now: number) {
-  const entry = attempts.get(key);
-  return Boolean(entry && entry.resetAt > now && entry.count >= limit);
-}
-
-function record(key: string, now: number) {
-  const entry = attempts.get(key);
-  if (entry && entry.resetAt > now) {
-    attempts.set(key, { count: entry.count + 1, resetAt: entry.resetAt });
-  } else {
-    attempts.set(key, { count: 1, resetAt: now + WINDOW_MS });
+async function recordFailure(key: string, now: Date) {
+  const existing = await prisma.loginAttempt.findUnique({ where: { key } });
+  if (existing && existing.resetAt > now) {
+    await prisma.loginAttempt.update({ where: { key }, data: { count: { increment: 1 } } });
+    return;
   }
+  const resetAt = new Date(now.getTime() + WINDOW_MS);
+  await prisma.loginAttempt.upsert({
+    where: { key },
+    create: { key, count: 1, resetAt },
+    update: { count: 1, resetAt },
+  });
 }
 
 async function clientIp() {
@@ -63,11 +56,12 @@ export async function loginAction(
     return { error: "Isi email dan kata sandi." };
   }
 
-  const now = Date.now();
-  prune(now);
-  const ipKey = `${await clientIp()}|${email}`;
+  const now = new Date();
+  // Bersihkan catatan yang sudah lewat agar tabel tidak membengkak.
+  await prisma.loginAttempt.deleteMany({ where: { resetAt: { lte: now } } });
+  const ipKey = `ip|${await clientIp()}|${email}`;
   const emailKey = `email|${email}`;
-  if (blocked(ipKey, MAX_PER_IP_EMAIL, now) || blocked(emailKey, MAX_PER_EMAIL, now)) {
+  if (await isBlocked(ipKey, emailKey, now)) {
     return { error: "Terlalu banyak percobaan. Coba lagi beberapa menit lagi." };
   }
 
@@ -78,17 +72,29 @@ export async function loginAction(
   // bcrypt selalu dijalankan agar tidak bisa menebak email terdaftar dari lamanya respons.
   const valid = await bcrypt.compare(password, user?.passwordHash ?? fakeHash());
   if (!user || !valid || !user.isActive || !user.employee.isActive) {
-    record(ipKey, now);
-    record(emailKey, now);
+    await Promise.all([recordFailure(ipKey, now), recordFailure(emailKey, now)]);
     return { error: "Email atau kata sandi tidak sesuai." };
   }
 
-  attempts.delete(ipKey);
-  await createSession(user.id);
+  await prisma.loginAttempt.deleteMany({ where: { key: ipKey } });
+  await createSession(user.id, user.tokenVersion);
   redirect("/dashboard");
 }
 
 export async function logoutAction() {
+  await clearSession();
+  redirect("/login");
+}
+
+/** Mencabut semua sesi akun ini di semua perangkat, termasuk perangkat ini. */
+export async function logoutAllAction() {
+  const session = await readSession();
+  if (session) {
+    await prisma.user.updateMany({
+      where: { id: session.userId, tokenVersion: session.version },
+      data: { tokenVersion: { increment: 1 } },
+    });
+  }
   await clearSession();
   redirect("/login");
 }

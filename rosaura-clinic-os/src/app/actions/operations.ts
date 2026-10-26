@@ -20,15 +20,22 @@ export interface ActionResult {
   message: string;
 }
 
-function refresh(bookingId?: string) {
-  revalidatePath("/dashboard");
-  revalidatePath("/bookings");
-  revalidatePath("/billing");
-  revalidatePath("/clients");
-  revalidatePath("/inventory");
-  revalidatePath("/employees");
-  revalidatePath("/services");
-  revalidatePath("/audit");
+type Area = "booking" | "billing" | "client" | "catalog" | "inventory" | "employee";
+
+// Halaman yang tampilannya berubah untuk tiap jenis tindakan. /audit selalu ikut.
+const AREA_PATHS: Record<Area, string[]> = {
+  booking: ["/bookings", "/dashboard"],
+  billing: ["/billing", "/dashboard", "/bookings"],
+  client: ["/clients", "/bookings", "/billing"],
+  catalog: ["/services", "/bookings", "/billing"],
+  inventory: ["/inventory", "/billing", "/dashboard"],
+  employee: ["/employees", "/bookings", "/dashboard"],
+};
+
+function refresh(areas: Area[], bookingId?: string) {
+  const paths = new Set<string>(["/audit"]);
+  for (const area of areas) for (const path of AREA_PATHS[area]) paths.add(path);
+  for (const path of paths) revalidatePath(path);
   if (bookingId) revalidatePath(`/bookings/${bookingId}`);
 }
 
@@ -69,7 +76,7 @@ export async function createBookingAction(formData: FormData): Promise<ActionRes
       ...parsed.data,
       roomId: parsed.data.roomId || null,
     });
-    refresh();
+    refresh(["booking"]);
     return { ok: true, message: "Booking tersimpan." };
   } catch (error) {
     if (error instanceof ServiceError) return { ok: false, message: error.message };
@@ -82,7 +89,7 @@ export async function changeStatusAction(formData: FormData) {
   try {
     const user = await requireUser();
     await changeBookingStatus(user, bookingId, String(formData.get("status") ?? ""));
-    refresh(bookingId);
+    refresh(["booking"], bookingId);
   } catch (error) {
     bounce(`/bookings/${bookingId}`, error);
   }
@@ -101,7 +108,7 @@ export async function rescheduleAction(formData: FormData) {
       therapistId: String(formData.get("therapistId") ?? ""),
       roomId: roomId || null,
     });
-    refresh(bookingId);
+    refresh(["booking"], bookingId);
     redirect(`/bookings/${created.id}?notice=${encodeURIComponent("Booking dijadwalkan ulang.")}`);
   } catch (error) {
     bounce(`/bookings/${bookingId}`, error);
@@ -119,7 +126,7 @@ export async function saveNoteAction(formData: FormData) {
       materialsNote: String(formData.get("materialsNote") ?? ""),
       followUpOn: String(formData.get("followUpOn") ?? ""),
     });
-    refresh(bookingId);
+    refresh(["booking"], bookingId);
   } catch (error) {
     bounce(`/bookings/${bookingId}`, error);
   }
@@ -131,7 +138,7 @@ export async function useMaterialAction(formData: FormData) {
   try {
     const user = await requireUser();
     await useMaterial(user, bookingId, String(formData.get("productId") ?? ""), Number(formData.get("quantity")));
-    refresh(bookingId);
+    refresh(["booking", "inventory"], bookingId);
   } catch (error) {
     bounce(`/bookings/${bookingId}`, error);
   }
@@ -143,7 +150,7 @@ export async function createInvoiceAction(formData: FormData) {
   try {
     const user = await requireUser();
     const invoice = await createInvoice(user, bookingId);
-    refresh(bookingId);
+    refresh(["billing"], bookingId);
     redirect(`/billing/${invoice.id}?notice=${encodeURIComponent("Tagihan dibuat.")}`);
   } catch (error) {
     bounce(`/bookings/${bookingId}`, error);
@@ -162,7 +169,7 @@ export async function recordPaymentAction(formData: FormData) {
       discount: Number(formData.get("discount") || 0),
       idempotencyKey: String(formData.get("idempotencyKey") ?? ""),
     });
-    refresh();
+    refresh(["billing"]);
     revalidatePath(`/billing/${invoiceId}`);
   } catch (error) {
     bounce(`/billing/${invoiceId}`, error);
@@ -195,7 +202,7 @@ export async function checkoutSaleAction(_state: ActionResult, formData: FormDat
       transferAmount: Number(formData.get("transferAmount") || 0),
       idempotencyKey: String(formData.get("idempotencyKey") ?? ""),
     });
-    refresh();
+    refresh(["billing", "inventory"]);
     revalidatePath(`/billing/${invoice.id}`);
     const stockNote = lines.some((line) => line.kind === "product") ? " Stok produk sudah dipotong." : "";
     redirect(`/billing/${invoice.id}?notice=${encodeURIComponent(`Penjualan tersimpan.${stockNote}`)}`);
@@ -210,7 +217,7 @@ export async function reversePaymentAction(formData: FormData) {
   try {
     const user = await requireUser();
     await reversePayment(user, String(formData.get("paymentId") ?? ""), String(formData.get("reason") ?? ""));
-    refresh();
+    refresh(["billing"]);
     revalidatePath(`/billing/${invoiceId}`);
   } catch (error) {
     bounce(`/billing/${invoiceId}`, error);
@@ -227,7 +234,7 @@ export async function createClientAction(formData: FormData) {
       dateOfBirth: String(formData.get("dateOfBirth") ?? ""),
       consent: formData.get("consent") === "on",
     });
-    refresh();
+    refresh(["client"]);
   } catch (error) {
     bounce("/clients", error);
   }
@@ -238,7 +245,7 @@ export async function setClientActiveAction(formData: FormData) {
   try {
     const user = await requireUser();
     await setClientActive(user, String(formData.get("clientId") ?? ""), formData.get("isActive") === "true");
-    refresh();
+    refresh(["client"]);
   } catch (error) {
     bounce("/clients", error);
   }
@@ -254,7 +261,7 @@ export async function createServiceAction(formData: FormData) {
       durationMinutes: Number(formData.get("durationMinutes")),
       price: Number(formData.get("price")),
     });
-    refresh();
+    refresh(["catalog"]);
   } catch (error) {
     bounce("/services", error);
   }
@@ -271,7 +278,7 @@ export async function updateServiceAction(formData: FormData) {
       durationMinutes: Number(formData.get("durationMinutes")),
       price: Number(formData.get("price")),
     });
-    refresh();
+    refresh(["catalog"]);
   } catch (error) {
     bounce("/services", error);
   }
@@ -282,7 +289,7 @@ export async function deleteServiceAction(formData: FormData) {
   try {
     const user = await requireUser();
     await deleteService(user, String(formData.get("serviceId") ?? ""));
-    refresh();
+    refresh(["catalog"]);
   } catch (error) {
     bounce("/services", error);
   }
@@ -299,7 +306,7 @@ export async function createProductAction(formData: FormData) {
       quantity: Number(formData.get("quantity") || 0),
       unit: String(formData.get("unit") ?? "pcs"),
     });
-    refresh();
+    refresh(["inventory"]);
   } catch (error) {
     bounce("/inventory", error);
   }
@@ -316,7 +323,7 @@ export async function updateProductAction(formData: FormData) {
       sellPrice: Number(formData.get("sellPrice")),
       unit: String(formData.get("unit") ?? "pcs"),
     });
-    refresh();
+    refresh(["inventory"]);
   } catch (error) {
     bounce("/inventory", error);
   }
@@ -327,7 +334,7 @@ export async function deleteProductAction(formData: FormData) {
   try {
     const user = await requireUser();
     await deleteProduct(user, String(formData.get("productId") ?? ""));
-    refresh();
+    refresh(["inventory"]);
   } catch (error) {
     bounce("/inventory", error);
   }
@@ -338,7 +345,7 @@ export async function setServiceActiveAction(formData: FormData) {
   try {
     const user = await requireUser();
     await setServiceActive(user, String(formData.get("serviceId") ?? ""), formData.get("isActive") === "true");
-    refresh();
+    refresh(["catalog"]);
   } catch (error) {
     bounce("/services", error);
   }
@@ -355,7 +362,7 @@ export async function receiveStockAction(formData: FormData) {
       expiryDate: String(formData.get("expiryDate") ?? ""),
       unitCost: Number(formData.get("unitCost") || 0),
     });
-    refresh();
+    refresh(["inventory"]);
   } catch (error) {
     bounce("/inventory", error);
   }
@@ -372,7 +379,7 @@ export async function adjustStockAction(formData: FormData) {
       quantity: Number(formData.get("quantity")),
       reason: String(formData.get("reason") ?? ""),
     });
-    refresh();
+    refresh(["inventory"]);
   } catch (error) {
     bounce("/inventory", error);
   }
@@ -416,7 +423,7 @@ export async function updateEmployeeAction(formData: FormData) {
       formData.getAll("roles").map(String),
       formData.get("isActive") === "on",
     );
-    refresh();
+    refresh(["employee"]);
   } catch (error) {
     bounce("/employees", error);
   }

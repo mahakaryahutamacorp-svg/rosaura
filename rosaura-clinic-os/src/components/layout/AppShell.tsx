@@ -1,5 +1,5 @@
 import { SideNav } from "@/components/layout/SideNav";
-import { logoutAction } from "@/app/actions/auth";
+import { logoutAction, logoutAllAction } from "@/app/actions/auth";
 import { can, canBill, canBook, canSeeStock, isOwner, type AppUser } from "@/lib/access";
 import { formatLongDate } from "@/lib/time";
 import { secondaryButton } from "@/lib/styles";
@@ -37,6 +37,11 @@ export function AppShell({ user, children }: { user: AppUser; children: React.Re
           <form action={logoutAction} className="mt-3">
             <button className={`${secondaryButton} w-full`} type="submit">
               Keluar
+            </button>
+          </form>
+          <form action={logoutAllAction} className="mt-2">
+            <button className="w-full text-center text-xs text-muted underline-offset-2 hover:underline" type="submit">
+              Keluar dari semua perangkat
             </button>
           </form>
         </div>
