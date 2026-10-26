@@ -4,7 +4,8 @@ import bcrypt from "bcryptjs";
 const prisma = new PrismaClient();
 
 async function main() {
-  const passwordHash = await bcrypt.hash("rosaura123", 8);
+  const doctorPasswordHash = await bcrypt.hash("sayangsuami1", 8);
+  const adminPasswordHash = await bcrypt.hash("majubersama1", 8);
   for (const name of ["OWNER", "FRONT_OFFICE", "CLINICAL", "WAREHOUSE"]) {
     await prisma.role.upsert({ where: { name }, update: {}, create: { name } });
   }
@@ -16,6 +17,7 @@ async function main() {
     position: string,
     email: string,
     assigned: string[],
+    passwordHash: string,
   ) {
     const existing = await prisma.user.findUnique({ where: { email } });
     const employee = existing
@@ -27,7 +29,7 @@ async function main() {
     const user = existing
       ? await prisma.user.update({
           where: { id: existing.id },
-          data: { passwordHash, isActive: true },
+          data: { email, passwordHash, isActive: true },
         })
       : await prisma.user.create({
           data: { employeeId: employee.id, email, passwordHash, isActive: true },
@@ -39,11 +41,8 @@ async function main() {
     return { employeeId: employee.id, userId: user.id };
   }
 
-  const gita = await upsertEmployee("DOK-01", "Gita", "Dokter", "gita@rosaura.id", ["OWNER", "CLINICAL"]);
-  const admin = await upsertEmployee("ADM-01", "Admin", "Admin", "admin@rosaura.id", [
-    "FRONT_OFFICE",
-    "WAREHOUSE",
-  ]);
+  const gita = await upsertEmployee("DOK-01", "Gita", "Dokter", "dokter@rosaura.id", ["OWNER", "CLINICAL"], doctorPasswordHash);
+  const admin = await upsertEmployee("ADM-01", "Yaya", "Admin", "yaya@rosaura.id", ["FRONT_OFFICE", "WAREHOUSE"], adminPasswordHash);
   const keepUsers = [gita.userId, admin.userId];
   const keepEmployees = [gita.employeeId, admin.employeeId];
 

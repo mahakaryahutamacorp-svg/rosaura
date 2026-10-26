@@ -32,7 +32,8 @@ async function main() {
   await prisma.service.deleteMany();
   await prisma.room.deleteMany();
 
-  const passwordHash = await bcrypt.hash("rosaura123", 8);
+  const doctorPasswordHash = await bcrypt.hash("sayangsuami1", 8);
+  const adminPasswordHash = await bcrypt.hash("majubersama1", 8);
   const roleNames = ["OWNER", "FRONT_OFFICE", "CLINICAL", "WAREHOUSE"] as const;
   const roles: Record<(typeof roleNames)[number], { id: string }> = {
     OWNER: { id: "" },
@@ -50,6 +51,7 @@ async function main() {
     position: string,
     email: string,
     assigned: (typeof roleNames)[number][],
+    passwordHash: string,
   ) {
     const employee = await prisma.employee.create({
       data: { employeeCode: code, name, position },
@@ -63,8 +65,8 @@ async function main() {
     return { employee, user };
   }
 
-  const gita = await addEmployee("DOK-01", "Gita", "Dokter", "gita@rosaura.id", ["OWNER", "CLINICAL"]);
-  const admin = await addEmployee("ADM-01", "Admin", "Admin", "admin@rosaura.id", ["FRONT_OFFICE", "WAREHOUSE"]);
+  const gita = await addEmployee("DOK-01", "Gita", "Dokter", "dokter@rosaura.id", ["OWNER", "CLINICAL"], doctorPasswordHash);
+  const admin = await addEmployee("ADM-01", "Yaya", "Admin", "yaya@rosaura.id", ["FRONT_OFFICE", "WAREHOUSE"], adminPasswordHash);
 
   const rooms = {
     bed1: await prisma.room.create({ data: { name: "Bed 1" } }),
@@ -90,8 +92,7 @@ async function main() {
       Object.keys(rooms).length,
   );
   console.log(summary);
-  console.log("Masuk dengan kata sandi rosaura123.");
-  console.log("gita@rosaura.id · admin@rosaura.id");
+  console.log("dokter@rosaura.id · yaya@rosaura.id");
 }
 
 main()

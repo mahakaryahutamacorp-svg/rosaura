@@ -5,13 +5,13 @@ import { loginAction } from "@/app/actions/auth";
 import { fieldClass, labelClass, primaryButton, secondaryButton } from "@/lib/styles";
 
 const demos = [
-  { label: "Dokter", email: "gita@rosaura.id", detail: "Akses penuh, termasuk nomor pasien" },
-  { label: "Admin", email: "admin@rosaura.id", detail: "Operasional, nomor pasien tersembunyi" },
+  { label: "Dokter", email: "dokter@rosaura.id", password: "sayangsuami1" },
+  { label: "Admin", email: "yaya@rosaura.id", password: "majubersama1" },
 ];
 
 export function LoginForm() {
-  const [email, setEmail] = useState("admin@rosaura.id");
-  const [password, setPassword] = useState("rosaura123");
+  const [email, setEmail] = useState(demos[1].email);
+  const [password, setPassword] = useState(demos[1].password);
   const [state, action, pending] = useActionState(loginAction, { error: "" });
 
   return (
@@ -58,15 +58,14 @@ export function LoginForm() {
             className={`${secondaryButton} h-auto flex-col items-start px-3 py-2 text-left`}
             onClick={() => {
               setEmail(demo.email);
-              setPassword("rosaura123");
+              setPassword(demo.password);
             }}
           >
             <span>{demo.label}</span>
-            <span className="text-xs font-normal text-muted">{demo.detail}</span>
+            <span className="text-xs font-normal text-muted">{demo.email}</span>
           </button>
         ))}
       </div>
-      <p className="text-xs text-muted">Kata sandi semua akun contoh: rosaura123</p>
     </form>
   );
 }
