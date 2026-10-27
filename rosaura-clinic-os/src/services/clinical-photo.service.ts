@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { ServiceError } from "@/lib/errors";
 import type { AppUser } from "@/lib/access";
 import { canSeeClinical } from "@/lib/access";
+import { hasClinicalContent, type SkinRecordValues } from "@/lib/skin-record";
 import { jakartaDateTime, parseDay } from "@/lib/time";
 import { writeAudit } from "@/services/audit";
 
@@ -79,23 +80,29 @@ async function saveFiles(actor: AppUser, skinRecordId: string, files: IncomingPh
   await writeAudit(prisma, actor.userId, "ADD_CLINICAL_PHOTO", "skinRecord", skinRecordId, `${files.length} foto`);
 }
 
+function visitDateFrom(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new ServiceError("Tanggal kunjungan tidak valid");
+  const year = Number(value.slice(0, 4));
+  if (year < 2000 || year > 2100) throw new ServiceError("Tahun kunjungan harus antara 2000 dan 2100");
+  return jakartaDateTime(parseDay(value), "12:00");
+}
+
 export async function createClinicalVisit(
   actor: AppUser,
-  input: { clientId: string; visitDate: string; doctorNotes: string; files: IncomingPhoto[] },
+  input: { clientId: string; visitDate: string; record: SkinRecordValues; files: IncomingPhoto[] },
 ) {
   assertClinical(actor);
-  const notes = input.doctorNotes.trim();
-  if (!notes && input.files.length === 0) {
-    throw new ServiceError("Isi catatan atau pilih minimal satu foto");
+  if (!hasClinicalContent(input.record) && input.files.length === 0) {
+    throw new ServiceError("Isi minimal satu data rekam medis atau pilih foto");
   }
   const client = await prisma.client.findUnique({ where: { id: input.clientId }, select: { id: true } });
   if (!client) throw new ServiceError("Klien tidak ditemukan");
   const record = await prisma.skinRecord.create({
     data: {
+      ...input.record,
       clientId: client.id,
       externalId: `local-${crypto.randomUUID()}`,
-      visitDate: jakartaDateTime(parseDay(input.visitDate), "12:00"),
-      doctorNotes: notes,
+      visitDate: visitDateFrom(input.visitDate),
     },
   });
   try {
@@ -106,6 +113,26 @@ export async function createClinicalVisit(
   }
   await writeAudit(prisma, actor.userId, "CREATE_SKIN_VISIT", "skinRecord", record.id, "Kunjungan kulit baru");
   return record;
+}
+
+export async function updateClinicalVisit(
+  actor: AppUser,
+  input: { clientId: string; skinRecordId: string; visitDate: string; record: SkinRecordValues },
+) {
+  assertClinical(actor);
+  const existing = await prisma.skinRecord.findFirst({
+    where: { id: input.skinRecordId, clientId: input.clientId },
+    select: { id: true, _count: { select: { photos: true } } },
+  });
+  if (!existing) throw new ServiceError("Kunjungan tidak ditemukan");
+  if (!hasClinicalContent(input.record) && existing._count.photos === 0) {
+    throw new ServiceError("Rekam medis tidak boleh dikosongkan. Isi minimal satu data atau tambahkan foto");
+  }
+  await prisma.skinRecord.update({
+    where: { id: existing.id },
+    data: { ...input.record, visitDate: visitDateFrom(input.visitDate) },
+  });
+  await writeAudit(prisma, actor.userId, "UPDATE_SKIN_VISIT", "skinRecord", existing.id, "Rekam medis diperbarui");
 }
 
 export async function addClinicalPhotos(

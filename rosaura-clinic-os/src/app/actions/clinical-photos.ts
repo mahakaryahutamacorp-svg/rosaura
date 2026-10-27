@@ -4,7 +4,14 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/access";
 import { ServiceError } from "@/lib/errors";
-import { addClinicalPhotos, createClinicalVisit, inspectPhoto, removeClinicalPhoto } from "@/services/clinical-photo.service";
+import { skinRecordFromForm } from "@/lib/skin-record";
+import {
+  addClinicalPhotos,
+  createClinicalVisit,
+  inspectPhoto,
+  removeClinicalPhoto,
+  updateClinicalVisit,
+} from "@/services/clinical-photo.service";
 
 function clientPath(clientId: string) {
   return `/clients/${clientId}`;
@@ -34,15 +41,34 @@ export async function createSkinVisitAction(formData: FormData) {
     await createClinicalVisit(user, {
       clientId,
       visitDate: String(formData.get("visitDate") ?? ""),
-      doctorNotes: String(formData.get("doctorNotes") ?? ""),
+      record: skinRecordFromForm(formData),
       files: await filesFrom(formData),
     });
   } catch (error) {
     fail(clientId, error);
   }
   revalidatePath("/clients");
+  revalidatePath("/dashboard");
   revalidatePath(clientPath(clientId));
   redirect(`${clientPath(clientId)}?notice=${encodeURIComponent("Kunjungan tersimpan")}`);
+}
+
+export async function updateSkinVisitAction(formData: FormData) {
+  const user = await requireUser();
+  const clientId = String(formData.get("clientId") ?? "");
+  try {
+    await updateClinicalVisit(user, {
+      clientId,
+      skinRecordId: String(formData.get("skinRecordId") ?? ""),
+      visitDate: String(formData.get("visitDate") ?? ""),
+      record: skinRecordFromForm(formData),
+    });
+  } catch (error) {
+    fail(clientId, error);
+  }
+  revalidatePath("/dashboard");
+  revalidatePath(clientPath(clientId));
+  redirect(`${clientPath(clientId)}?notice=${encodeURIComponent("Rekam medis diperbarui")}`);
 }
 
 export async function addVisitPhotosAction(formData: FormData) {

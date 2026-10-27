@@ -1,11 +1,17 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { addVisitPhotosAction, createSkinVisitAction, removeVisitPhotoAction } from "@/app/actions/clinical-photos";
+import {
+  addVisitPhotosAction,
+  createSkinVisitAction,
+  removeVisitPhotoAction,
+  updateSkinVisitAction,
+} from "@/app/actions/clinical-photos";
 import { Flash } from "@/components/Flash";
 import { PhotoProgress } from "@/components/clinical/PhotoProgress";
+import { SkinRecordFields } from "@/components/clinical/SkinRecordFields";
 import { can, canSeeClientPhone, canSeeClinical, requireUser } from "@/lib/access";
 import { fieldClass, labelClass, primaryButton, quietButton } from "@/lib/styles";
-import { formatDateOnlyUtc, formatLongDate, todayJakarta } from "@/lib/time";
+import { dayKey, formatDateOnlyUtc, formatLongDate, todayJakarta } from "@/lib/time";
 import { getClientProfile } from "@/services/client.service";
 
 export default async function ClientDetailPage({
@@ -56,26 +62,25 @@ export default async function ClientDetailPage({
       {showClinical ? (
         <>
           <PhotoProgress photos={progress} />
-          <form action={createSkinVisitAction} className="grid gap-3 rounded-3xl border border-line bg-paper p-5 md:grid-cols-2">
-            <div className="md:col-span-2">
-              <h2 className="font-display text-2xl">Kunjungan baru</h2>
-              <p className="text-sm text-muted">Catatan dan foto kunjungan ini masuk ke riwayat dokter.</p>
+          <form action={createSkinVisitAction} className="space-y-5 rounded-3xl border border-line bg-paper p-5">
+            <div>
+              <h2 className="font-display text-2xl">Rekam medis baru</h2>
+              <p className="text-sm text-muted">Isi bagian yang diperiksa hari ini. Kolom lain boleh dikosongkan.</p>
             </div>
             <input type="hidden" name="clientId" value={client.id} />
-            <label>
-              <span className={labelClass}>Tanggal kunjungan</span>
-              <input className={fieldClass} type="date" name="visitDate" required defaultValue={todayJakarta()} />
-            </label>
-            <label>
-              <span className={labelClass}>Foto</span>
-              <input className="block w-full text-sm" type="file" name="photos" accept="image/jpeg,image/png,image/webp" multiple />
-            </label>
-            <label className="md:col-span-2">
-              <span className={labelClass}>Catatan</span>
-              <textarea className={`${fieldClass} h-24 py-2`} name="doctorNotes" placeholder="Temuan atau rencana pada kunjungan ini" />
-            </label>
+            <div className="grid gap-3 md:grid-cols-2">
+              <label>
+                <span className={labelClass}>Tanggal kunjungan</span>
+                <input className={fieldClass} type="date" name="visitDate" required defaultValue={todayJakarta()} />
+              </label>
+              <label>
+                <span className={labelClass}>Foto</span>
+                <input className="block w-full text-sm" type="file" name="photos" accept="image/jpeg,image/png,image/webp" multiple />
+              </label>
+            </div>
+            <SkinRecordFields />
             <button className={`${primaryButton} md:w-fit`} type="submit">
-              Simpan kunjungan
+              Simpan rekam medis
             </button>
           </form>
         </>
@@ -99,6 +104,21 @@ export default async function ClientDetailPage({
             {showClinical ? (
               <>
                 <ClinicalRecord record={record} />
+                <details className="mt-4 rounded-2xl border border-line/80 bg-ivory/40 p-4">
+                  <summary className="cursor-pointer text-sm font-medium text-gold-deep">Ubah rekam medis</summary>
+                  <form action={updateSkinVisitAction} className="mt-4 space-y-5">
+                    <input type="hidden" name="clientId" value={client.id} />
+                    <input type="hidden" name="skinRecordId" value={record.id} />
+                    <label className="block max-w-xs">
+                      <span className={labelClass}>Tanggal kunjungan</span>
+                      <input className={fieldClass} type="date" name="visitDate" required defaultValue={dayKey(record.visitDate)} />
+                    </label>
+                    <SkinRecordFields values={record} />
+                    <button className={primaryButton} type="submit">
+                      Simpan perubahan
+                    </button>
+                  </form>
+                </details>
                 <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
                   {record.photos.map((photo) => (
                     <figure key={photo.id} className="rounded-2xl border border-line bg-ivory p-2">
