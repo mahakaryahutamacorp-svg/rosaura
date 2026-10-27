@@ -10,6 +10,7 @@ const PROTECTED = [
   "/services",
   "/inventory",
   "/employees",
+  "/journal",
   "/audit",
   "/clinical-photos",
   "/display",

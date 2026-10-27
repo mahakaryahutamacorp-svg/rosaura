@@ -48,6 +48,10 @@ export function canManageCatalog(user: AppUser) {
   return can(user, ["FRONT_OFFICE"]);
 }
 
+export function canFillJournal(user: AppUser) {
+  return can(user, ["FRONT_OFFICE"]);
+}
+
 export function canSeeStock(user: AppUser) {
   return can(user, ["WAREHOUSE", "CLINICAL"]);
 }

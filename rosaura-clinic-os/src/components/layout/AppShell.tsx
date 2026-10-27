@@ -1,12 +1,13 @@
 import { SideNav } from "@/components/layout/SideNav";
 import { logoutAction } from "@/app/actions/auth";
-import { can, canBill, canBook, canSeeStock, isOwner, type AppUser } from "@/lib/access";
+import { can, canBill, canBook, canFillJournal, canSeeStock, isOwner, type AppUser } from "@/lib/access";
 import { formatLongDate } from "@/lib/time";
 import { secondaryButton } from "@/lib/styles";
 
 export function AppShell({ user, children }: { user: AppUser; children: React.ReactNode }) {
   const items = [
     { href: "/dashboard", label: "Ringkasan", show: true },
+    { href: "/journal", label: "Jurnal", show: canFillJournal(user) },
     { href: "/bookings", label: "Booking", show: canBook(user) },
     { href: "/clients", label: "Klien", show: can(user, ["FRONT_OFFICE", "CLINICAL"]) },
     { href: "/billing", label: "Kasir", show: canBill(user) },

@@ -42,6 +42,7 @@ function widenLongText(schema) {
     "summary",
     "caption",
     "linesJson",
+    "checkedKeys",
   ].join("|");
   return schema.replace(
     new RegExp(`^(\\s+)(${fields})(\\s+String\\??(?:\\s+@default\\([^)]*\\))?)(?!\\s+@db\\.Text)(\\s*)$`, "gm"),

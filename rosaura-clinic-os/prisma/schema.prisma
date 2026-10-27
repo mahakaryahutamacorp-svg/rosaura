@@ -24,6 +24,7 @@ model User {
   movements      StockMovement[]
   notes          VisitNote[]
   clinicalPhotos ClinicalPhoto[]
+  dailyJournals  DailyJournal[]
 }
 
 model Employee {
@@ -415,6 +416,22 @@ model DisplayPromo {
   createdAt   DateTime @default(now())
 
   @@index([slot, createdAt])
+}
+
+model DailyJournal {
+  id          String   @id @default(cuid())
+  journalDate String
+  position    String
+  checkedKeys String   @default("[]")
+  notes       String   @default("")
+  filledById  String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  filledBy    User     @relation(fields: [filledById], references: [id])
+
+  @@unique([journalDate, position])
+  @@index([journalDate])
+  @@index([filledById])
 }
 
 model AuditLog {
