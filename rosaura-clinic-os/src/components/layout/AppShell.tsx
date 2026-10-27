@@ -9,7 +9,11 @@ export function AppShell({ user, children }: { user: AppUser; children: React.Re
     { href: "/dashboard", label: "Ringkasan", show: true },
     { href: "/journal", label: "Jurnal", show: canFillJournal(user) },
     { href: "/bookings", label: "Booking", show: canBook(user) },
-    { href: "/clients", label: "Klien", show: can(user, ["FRONT_OFFICE", "CLINICAL"]) },
+    {
+      href: "/clients",
+      label: user.roles.includes("CLINICAL") ? "Rekam Medis & Pasien" : "Klien",
+      show: can(user, ["FRONT_OFFICE", "CLINICAL"]),
+    },
     { href: "/billing", label: "Kasir", show: canBill(user) },
     { href: "/services", label: "Layanan", show: can(user, ["FRONT_OFFICE"]) },
     { href: "/inventory", label: "Stok", show: canSeeStock(user) },

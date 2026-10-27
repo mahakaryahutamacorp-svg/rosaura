@@ -25,11 +25,54 @@ function parseCheckedKeys(raw: string) {
   }
 }
 
+function isMissingJournal(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const code = "code" in error ? String(error.code) : "";
+  const message = "message" in error ? String(error.message) : "";
+  return code === "P2021" || /does not exist|no such table|unknown table/i.test(message);
+}
+
+async function ensureDailyJournalTable() {
+  const mysql = (process.env.DATABASE_URL ?? "").startsWith("mysql://");
+  if (mysql) {
+    await prisma.$executeRawUnsafe(
+      "CREATE TABLE IF NOT EXISTS `DailyJournal` (`id` VARCHAR(191) NOT NULL, `journalDate` VARCHAR(191) NOT NULL, `position` VARCHAR(191) NOT NULL, `checkedKeys` TEXT NOT NULL, `notes` TEXT NOT NULL, `filledById` VARCHAR(191) NOT NULL, `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3), `updatedAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3), PRIMARY KEY (`id`), UNIQUE KEY `DailyJournal_journalDate_position_key` (`journalDate`, `position`), KEY `DailyJournal_journalDate_idx` (`journalDate`), KEY `DailyJournal_filledById_idx` (`filledById`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+    );
+    return;
+  }
+  await prisma.$executeRawUnsafe(
+    `CREATE TABLE IF NOT EXISTS "DailyJournal" ("id" TEXT NOT NULL PRIMARY KEY, "journalDate" TEXT NOT NULL, "position" TEXT NOT NULL, "checkedKeys" TEXT NOT NULL DEFAULT '[]', "notes" TEXT NOT NULL DEFAULT '', "filledById" TEXT NOT NULL, "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" DATETIME NOT NULL)`,
+  );
+  try {
+    await prisma.$executeRawUnsafe(
+      `CREATE UNIQUE INDEX IF NOT EXISTS "DailyJournal_journalDate_position_key" ON "DailyJournal"("journalDate", "position")`,
+    );
+    await prisma.$executeRawUnsafe(
+      `CREATE INDEX IF NOT EXISTS "DailyJournal_journalDate_idx" ON "DailyJournal"("journalDate")`,
+    );
+    await prisma.$executeRawUnsafe(
+      `CREATE INDEX IF NOT EXISTS "DailyJournal_filledById_idx" ON "DailyJournal"("filledById")`,
+    );
+  } catch {
+    // Indexes might already exist
+  }
+}
+
 export async function listDailyJournals(date: string): Promise<JournalDayEntry[]> {
-  const rows = await prisma.dailyJournal.findMany({
-    where: { journalDate: date },
-    include: { filledBy: { include: { employee: true } } },
-  });
+  let rows;
+  try {
+    rows = await prisma.dailyJournal.findMany({
+      where: { journalDate: date },
+      include: { filledBy: { include: { employee: true } } },
+    });
+  } catch (error) {
+    if (!isMissingJournal(error)) throw error;
+    await ensureDailyJournalTable();
+    rows = await prisma.dailyJournal.findMany({
+      where: { journalDate: date },
+      include: { filledBy: { include: { employee: true } } },
+    });
+  }
   const byPosition = new Map(rows.map((row) => [row.position, row]));
 
   return JOURNAL_POSITIONS.map((position) => {
@@ -58,25 +101,34 @@ export async function saveDailyJournals(actor: AppUser, date: string, drafts: Jo
     return { position: position.key, label: position.label, checkedKeys, notes, total: position.tasks.length };
   });
 
-  await prisma.$transaction(async (tx) => {
-    for (const entry of entries) {
-      await tx.dailyJournal.upsert({
-        where: { journalDate_position: { journalDate: date, position: entry.position } },
-        create: {
-          journalDate: date,
-          position: entry.position,
-          checkedKeys: JSON.stringify(entry.checkedKeys),
-          notes: entry.notes,
-          filledById: actor.userId,
-        },
-        update: {
-          checkedKeys: JSON.stringify(entry.checkedKeys),
-          notes: entry.notes,
-          filledById: actor.userId,
-        },
-      });
-    }
-    const summary = entries.map((entry) => `${entry.label} ${entry.checkedKeys.length}/${entry.total}`).join(", ");
-    await writeAudit(tx, actor.userId, "JOURNAL_SAVE", "daily_journal", date, summary);
-  });
+  const runSave = () =>
+    prisma.$transaction(async (tx) => {
+      for (const entry of entries) {
+        await tx.dailyJournal.upsert({
+          where: { journalDate_position: { journalDate: date, position: entry.position } },
+          create: {
+            journalDate: date,
+            position: entry.position,
+            checkedKeys: JSON.stringify(entry.checkedKeys),
+            notes: entry.notes,
+            filledById: actor.userId,
+          },
+          update: {
+            checkedKeys: JSON.stringify(entry.checkedKeys),
+            notes: entry.notes,
+            filledById: actor.userId,
+          },
+        });
+      }
+      const summary = entries.map((entry) => `${entry.label} ${entry.checkedKeys.length}/${entry.total}`).join(", ");
+      await writeAudit(tx, actor.userId, "JOURNAL_SAVE", "daily_journal", date, summary);
+    });
+
+  try {
+    await runSave();
+  } catch (error) {
+    if (!isMissingJournal(error)) throw error;
+    await ensureDailyJournalTable();
+    await runSave();
+  }
 }

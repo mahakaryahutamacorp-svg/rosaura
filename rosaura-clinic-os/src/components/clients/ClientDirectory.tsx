@@ -29,12 +29,13 @@ export function ClientDirectory({ clients, canEdit }: { clients: ClientRow[]; ca
               <th className="px-3 py-3 font-medium">Lahir</th>
               <th className="px-3 py-3 font-medium">Kunjungan</th>
               <th className="px-5 py-3 font-medium">Status</th>
+              <th className="px-5 py-3 font-medium">Rekam Medis</th>
             </tr>
           </thead>
           <tbody>
             {visible.length === 0 ? (
               <tr>
-                <td className="px-5 py-6 text-muted" colSpan={showPhone ? 6 : 5}>
+                <td className="px-5 py-6 text-muted" colSpan={showPhone ? 7 : 6}>
                   Klien tidak ditemukan.
                 </td>
               </tr>
@@ -62,6 +63,14 @@ export function ClientDirectory({ clients, canEdit }: { clients: ClientRow[]; ca
                   ) : (
                     "Nonaktif"
                   )}
+                </td>
+                <td className="px-5 py-3">
+                  <Link
+                    href={`/clients/${client.id}`}
+                    className="inline-flex items-center gap-1 rounded-lg bg-gold/10 px-2.5 py-1 text-xs font-semibold text-gold-deep transition hover:bg-gold/20"
+                  >
+                    Buka Rekam Medis &rarr;
+                  </Link>
                 </td>
               </tr>
             ))}

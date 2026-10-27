@@ -82,7 +82,15 @@ export default async function BookingDetailPage({
           <Link href="/bookings" className="text-sm text-gold-deep">
             Kembali ke kalender
           </Link>
-          <h1 className="font-display mt-2 text-4xl">{booking.client.fullName}</h1>
+          <div className="mt-2 flex flex-wrap items-baseline gap-3">
+            <h1 className="font-display text-4xl">{booking.client.fullName}</h1>
+            <Link
+              href={`/clients/${booking.clientId}`}
+              className="inline-flex items-center gap-1 rounded-xl bg-gold/15 px-3 py-1 text-xs font-semibold text-gold-deep transition hover:bg-gold/25"
+            >
+              Buka Rekam Medis &rarr;
+            </Link>
+          </div>
           <p className="text-sm text-muted">
             {booking.bookingCode} · {formatLongDate(booking.startAt)} · {formatClock(booking.startAt)}–
             {formatClock(booking.endAt)}
