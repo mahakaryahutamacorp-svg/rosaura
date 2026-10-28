@@ -50,29 +50,33 @@ export interface MedicalRecordHit {
   excerpt: string;
 }
 
-function finding(label: string, aliases: string, active: boolean, ...details: string[]) {
+function finding(label: string, active: boolean, ...details: string[]) {
   const detail = details.filter(Boolean).join(", ");
   if (!active && !detail) return "";
-  return `${label} ${aliases} ${detail}`.trim();
+  return detail ? `${label}: ${detail}` : label;
 }
 
 function findingsText(record: RecordRow) {
   return [
-    finding("Jerawat", "acne", record.acneStatus, record.acneArea, record.acneDegree),
-    finding(
-      "Hiperpigmentasi",
-      "flek pigmentasi",
-      record.hyperpigmentationStatus,
-      record.hyperpigmentationArea,
-      record.hyperpigmentationDegree,
-    ),
-    finding("Kerutan", "keriput wrinkle", record.wrinkleStatus, record.wrinkleArea, record.wrinkleDegree),
-    finding("Bekas", "scar", record.scarStatus, record.scarType),
+    finding("Jerawat", record.acneStatus, record.acneArea, record.acneDegree),
+    finding("Hiperpigmentasi", record.hyperpigmentationStatus, record.hyperpigmentationArea, record.hyperpigmentationDegree),
+    finding("Kerutan", record.wrinkleStatus, record.wrinkleArea, record.wrinkleDegree),
+    finding("Bekas", record.scarStatus, record.scarType),
     record.pregnant ? "Hamil" : "",
     record.breastfeeding ? "Menyusui" : "",
   ]
     .filter(Boolean)
     .join(" · ");
+}
+
+/** Sinonim yang hanya dipakai untuk pencocokan, tidak ditampilkan. */
+function findingAliases(record: RecordRow) {
+  return [
+    record.acneStatus ? "acne" : "",
+    record.hyperpigmentationStatus ? "flek pigmentasi melasma" : "",
+    record.wrinkleStatus ? "keriput wrinkle" : "",
+    record.scarStatus ? "scar" : "",
+  ].join(" ");
 }
 
 function labeledTexts(record: RecordRow) {
@@ -97,6 +101,7 @@ function searchFields(record: RecordRow) {
     record.moisture,
     formatLongDate(record.visitDate),
     dayKey(record.visitDate),
+    findingAliases(record),
     ...labeledTexts(record).map((item) => item.value),
   ];
 }

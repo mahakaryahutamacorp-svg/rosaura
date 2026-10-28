@@ -5,7 +5,6 @@ import { prisma } from "@/lib/db";
 import { ServiceError } from "@/lib/errors";
 import type { AppUser } from "@/lib/access";
 import { canManageDoctors } from "@/lib/access";
-import { nextCode } from "@/lib/codes";
 import { writeAudit } from "@/services/audit";
 
 export const DOCTOR_POSITION = "Dokter";
@@ -79,6 +78,24 @@ async function assertEmailAvailable(db: Prisma.TransactionClient, email: string,
   if (owner && owner.id !== exceptUserId) throw new ServiceError("Email ini sudah dipakai akun lain");
 }
 
+/** Melanjutkan nomor DOK tertinggi dengan format yang sama seperti akun lama (DOK-01, DOK-02, ...). */
+async function nextDoctorCode(db: Prisma.TransactionClient) {
+  const rows = await db.employee.findMany({
+    where: { employeeCode: { startsWith: `${DOCTOR_CODE_PREFIX}-` } },
+    select: { employeeCode: true },
+  });
+  const highest = rows.reduce((max, row) => {
+    const number = Number(row.employeeCode.slice(DOCTOR_CODE_PREFIX.length + 1));
+    return Number.isInteger(number) ? Math.max(max, number) : max;
+  }, 0);
+  for (let number = highest + 1; number < highest + 25; number += 1) {
+    const code = `${DOCTOR_CODE_PREFIX}-${String(number).padStart(2, "0")}`;
+    const taken = await db.employee.findUnique({ where: { employeeCode: code }, select: { id: true } });
+    if (!taken) return code;
+  }
+  return `${DOCTOR_CODE_PREFIX}-${Date.now().toString(36).toUpperCase()}`;
+}
+
 async function roleIds(db: Prisma.TransactionClient, names: string[]) {
   const rows = await Promise.all(
     names.map((name) => db.role.upsert({ where: { name }, update: {}, create: { name }, select: { id: true } })),
@@ -124,10 +141,7 @@ export async function createDoctor(actor: AppUser, input: CreateDoctorInput) {
 
   return prisma.$transaction(async (tx) => {
     await assertEmailAvailable(tx, data.email);
-    const doctorCount = await tx.employee.count({ where: { employeeCode: { startsWith: `${DOCTOR_CODE_PREFIX}-` } } });
-    const employeeCode = await nextCode(DOCTOR_CODE_PREFIX, doctorCount, async (code) =>
-      Boolean(await tx.employee.findUnique({ where: { employeeCode: code }, select: { id: true } })),
-    );
+    const employeeCode = await nextDoctorCode(tx);
     const employee = await tx.employee.create({
       data: { employeeCode, name: data.name, phone: data.phone || null, position: DOCTOR_POSITION },
     });

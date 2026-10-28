@@ -45,20 +45,27 @@ function phoneVariants(token: string) {
   return [token];
 }
 
-/** Levenshtein dengan batas: berhenti lebih awal begitu jarak pasti melebihi `limit`. */
+/**
+ * Jarak Damerau-Levenshtein (huruf tertukar dihitung satu kesalahan) dengan
+ * batas: berhenti lebih awal begitu jarak pasti melebihi `limit`.
+ */
 function withinEditDistance(left: string, right: string, limit: number) {
   if (Math.abs(left.length - right.length) > limit) return false;
+  let beforePrevious: number[] = [];
   let previous = Array.from({ length: right.length + 1 }, (_, index) => index);
   for (let row = 1; row <= left.length; row += 1) {
     const current = [row];
     let rowMinimum = row;
     for (let column = 1; column <= right.length; column += 1) {
       const cost = left[row - 1] === right[column - 1] ? 0 : 1;
-      const value = Math.min(previous[column] + 1, current[column - 1] + 1, previous[column - 1] + cost);
+      let value = Math.min(previous[column] + 1, current[column - 1] + 1, previous[column - 1] + cost);
+      const swapped = row > 1 && column > 1 && left[row - 1] === right[column - 2] && left[row - 2] === right[column - 1];
+      if (swapped) value = Math.min(value, beforePrevious[column - 2] + 1);
       current.push(value);
       rowMinimum = Math.min(rowMinimum, value);
     }
     if (rowMinimum > limit) return false;
+    beforePrevious = previous;
     previous = current;
   }
   return previous[right.length] <= limit;
