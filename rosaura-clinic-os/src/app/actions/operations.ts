@@ -378,6 +378,7 @@ export async function createProductAction(formData: FormData) {
       category: String(formData.get("category") ?? ""),
       sellPrice: Number(formData.get("sellPrice")),
       quantity: Number(formData.get("quantity") || 0),
+      minStock: Number(formData.get("minStock") || 0),
       unit: String(formData.get("unit") ?? "pcs"),
     });
     refresh(["inventory"]);
@@ -395,6 +396,7 @@ export async function updateProductAction(formData: FormData) {
       name: String(formData.get("name") ?? ""),
       category: String(formData.get("category") ?? ""),
       sellPrice: Number(formData.get("sellPrice")),
+      minStock: Number(formData.get("minStock") || 0),
       unit: String(formData.get("unit") ?? "pcs"),
     });
     refresh(["inventory"]);
@@ -405,14 +407,17 @@ export async function updateProductAction(formData: FormData) {
 }
 
 export async function deleteProductAction(formData: FormData) {
+  let outcome: "deleted" | "hidden" = "deleted";
   try {
     const user = await requireUser();
-    await deleteProduct(user, String(formData.get("productId") ?? ""));
+    outcome = await deleteProduct(user, String(formData.get("productId") ?? ""));
     refresh(["inventory"]);
   } catch (error) {
     bounce("/inventory", error);
   }
-  redirect("/inventory?notice=" + encodeURIComponent("Produk dihapus."));
+  const notice =
+    outcome === "hidden" ? "Produk sudah punya riwayat penjualan atau pemakaian, jadi disembunyikan." : "Produk dihapus.";
+  redirect("/inventory?notice=" + encodeURIComponent(notice));
 }
 
 export async function setServiceActiveAction(formData: FormData) {

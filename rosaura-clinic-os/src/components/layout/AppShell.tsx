@@ -1,6 +1,16 @@
 import { SideNav } from "@/components/layout/SideNav";
 import { logoutAction } from "@/app/actions/auth";
-import { can, canBill, canBook, canFillJournal, canSeeStock, isOwner, type AppUser } from "@/lib/access";
+import {
+  can,
+  canBill,
+  canBook,
+  canFillJournal,
+  canManageDoctors,
+  canSeeClinical,
+  canSeeStock,
+  isOwner,
+  type AppUser,
+} from "@/lib/access";
 import { formatLongDate } from "@/lib/time";
 import { secondaryButton } from "@/lib/styles";
 
@@ -11,13 +21,15 @@ export function AppShell({ user, children }: { user: AppUser; children: React.Re
     { href: "/bookings", label: "Booking", show: canBook(user) },
     {
       href: "/clients",
-      label: user.roles.includes("CLINICAL") ? "Rekam Medis & Pasien" : "Klien",
+      label: user.roles.includes("CLINICAL") ? "Pasien" : "Klien",
       show: can(user, ["FRONT_OFFICE", "CLINICAL"]),
     },
+    { href: "/medical-records", label: "Rekam Medis", show: canSeeClinical(user) },
     { href: "/billing", label: "Kasir", show: canBill(user) },
     { href: "/services", label: "Layanan", show: can(user, ["FRONT_OFFICE"]) },
     { href: "/inventory", label: "Stok", show: canSeeStock(user) },
     { href: "/employees", label: "Karyawan", show: isOwner(user) },
+    { href: "/doctors", label: "Akun Dokter", show: canManageDoctors(user) },
     { href: "/audit", label: "Audit", show: isOwner(user) },
   ].filter((item) => item.show);
 

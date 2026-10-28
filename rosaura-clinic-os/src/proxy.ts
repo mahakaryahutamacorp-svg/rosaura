@@ -6,6 +6,8 @@ const PROTECTED = [
   "/dashboard",
   "/bookings",
   "/clients",
+  "/medical-records",
+  "/doctors",
   "/billing",
   "/services",
   "/inventory",

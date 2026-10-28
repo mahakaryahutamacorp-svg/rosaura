@@ -10,6 +10,7 @@ import {
 } from "@/app/actions/operations";
 import { StatusBadge } from "@/components/StatusBadge";
 import { formatRupiah } from "@/lib/format";
+import { rankBySmartSearch } from "@/lib/search";
 import { fieldClass, labelClass, primaryButton, secondaryButton } from "@/lib/styles";
 import { addDays, formatClock, formatLongDate, todayJakarta } from "@/lib/time";
 
@@ -141,23 +142,16 @@ export function BookingDesk({
   });
 
   // Filter klien
-  const filteredClients = useMemo(() => {
-    const q = clientSearch.trim().toLowerCase();
-    if (!q) return clientList;
-    return clientList.filter(
-      (c) =>
-        c.name.toLowerCase().includes(q) ||
-        c.clientCode.toLowerCase().includes(q) ||
-        (c.phone && c.phone.includes(q)),
-    );
-  }, [clientList, clientSearch]);
+  const filteredClients = useMemo(
+    () => rankBySmartSearch(clientList, clientSearch, (client) => [client.name, client.clientCode, client.phone]),
+    [clientList, clientSearch],
+  );
 
   // Filter layanan
-  const filteredServices = useMemo(() => {
-    const q = serviceSearch.trim().toLowerCase();
-    if (!q) return serviceList;
-    return serviceList.filter((s) => s.name.toLowerCase().includes(q));
-  }, [serviceList, serviceSearch]);
+  const filteredServices = useMemo(
+    () => rankBySmartSearch(serviceList, serviceSearch, (service) => [service.name]),
+    [serviceList, serviceSearch],
+  );
 
   const selectedService = serviceList.find((service) => service.id === draft.serviceId);
 

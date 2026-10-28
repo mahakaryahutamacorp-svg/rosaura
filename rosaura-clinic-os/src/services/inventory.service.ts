@@ -53,9 +53,13 @@ async function categoryIdFor(name: string) {
   return created.id;
 }
 
+function assertMinStock(minStock: number) {
+  if (!Number.isInteger(minStock) || minStock < 0) throw new ServiceError("Stok minimum tidak valid");
+}
+
 export async function createProduct(
   actor: AppUser,
-  input: { name: string; category: string; sellPrice: number; quantity: number; unit: string },
+  input: { name: string; category: string; sellPrice: number; quantity: number; minStock: number; unit: string },
 ) {
   assertCatalog(actor);
   const name = input.name.trim();
@@ -63,6 +67,7 @@ export async function createProduct(
   if (name.length < 2) throw new ServiceError("Nama produk terlalu pendek");
   if (!Number.isInteger(input.sellPrice) || input.sellPrice < 0) throw new ServiceError("Harga produk tidak valid");
   if (!Number.isInteger(input.quantity) || input.quantity < 0) throw new ServiceError("Stok awal tidak valid");
+  assertMinStock(input.minStock);
   const key = normalizeCatalogName(name);
   const existing = await prisma.product.findMany({ where: { isActive: true }, select: { name: true } });
   if (existing.some((product) => normalizeCatalogName(product.name) === key)) {
@@ -79,6 +84,7 @@ export async function createProduct(
         unit,
         sellPrice: input.sellPrice,
         qtyOnHand: input.quantity,
+        minStock: input.minStock,
         trackBatch: false,
       },
     });
@@ -100,13 +106,16 @@ export async function createProduct(
 
 export async function updateProduct(
   actor: AppUser,
-  input: { productId: string; name: string; category: string; sellPrice: number; unit: string },
+  input: { productId: string; name: string; category: string; sellPrice: number; minStock: number; unit: string },
 ) {
   assertCatalog(actor);
   const name = input.name.trim();
   const unit = input.unit.trim() || "pcs";
   if (name.length < 2) throw new ServiceError("Nama produk terlalu pendek");
   if (!Number.isInteger(input.sellPrice) || input.sellPrice < 0) throw new ServiceError("Harga produk tidak valid");
+  assertMinStock(input.minStock);
+  const current = await prisma.product.findUnique({ where: { id: input.productId }, select: { isActive: true } });
+  if (!current?.isActive) throw new ServiceError("Produk tidak ditemukan");
   const key = normalizeCatalogName(name);
   const existing = await prisma.product.findMany({
     where: { isActive: true, NOT: { id: input.productId } },
@@ -118,22 +127,32 @@ export async function updateProduct(
   const categoryId = await categoryIdFor(input.category);
   const product = await prisma.product.update({
     where: { id: input.productId },
-    data: { name, categoryId, unit, sellPrice: input.sellPrice },
+    data: { name, categoryId, unit, sellPrice: input.sellPrice, minStock: input.minStock },
   });
   await writeAudit(prisma, actor.userId, "UPDATE_PRODUCT", "product", product.id, product.name);
   return product;
 }
 
-export async function deleteProduct(actor: AppUser, productId: string) {
+/**
+ * Produk yang sudah terjual atau dipakai di kunjungan hanya disembunyikan agar
+ * riwayat mutasi stok tetap utuh untuk audit.
+ */
+export async function deleteProduct(actor: AppUser, productId: string): Promise<"deleted" | "hidden"> {
   assertCatalog(actor);
   const product = await prisma.product.findUnique({ where: { id: productId }, include: { batches: true } });
-  if (!product) throw new ServiceError("Produk tidak ditemukan");
-  const used = product.batches.length
-    ? await prisma.materialUsage.count({ where: { stockBatchId: { in: product.batches.map((batch) => batch.id) } } })
-    : 0;
-  if (used > 0) {
-    await prisma.product.update({ where: { id: productId }, data: { isActive: false } });
-    throw new ServiceError("Produk sudah dipakai di kunjungan, jadi hanya disembunyikan");
+  if (!product || !product.isActive) throw new ServiceError("Produk tidak ditemukan");
+  const batchIds = product.batches.map((batch) => batch.id);
+  const [usages, outgoing] = await Promise.all([
+    batchIds.length ? prisma.materialUsage.count({ where: { stockBatchId: { in: batchIds } } }) : 0,
+    prisma.stockMovement.count({ where: { productId, movementType: { in: ["SALE", "USAGE"] } } }),
+  ]);
+
+  if (usages > 0 || outgoing > 0) {
+    await prisma.$transaction(async (tx) => {
+      await tx.product.update({ where: { id: productId }, data: { isActive: false } });
+      await writeAudit(tx, actor.userId, "HIDE_PRODUCT", "product", productId, product.name);
+    });
+    return "hidden";
   }
 
   await prisma.$transaction(async (tx) => {
@@ -142,6 +161,7 @@ export async function deleteProduct(actor: AppUser, productId: string) {
     await tx.product.delete({ where: { id: productId } });
     await writeAudit(tx, actor.userId, "DELETE_PRODUCT", "product", productId, product.name);
   });
+  return "deleted";
 }
 
 export async function receiveStock(
@@ -204,7 +224,7 @@ export async function adjustStock(
 
   return prisma.$transaction(async (tx) => {
     const product = await tx.product.findUnique({ where: { id: input.productId } });
-    if (!product) throw new ServiceError("Produk tidak ditemukan");
+    if (!product || !product.isActive) throw new ServiceError("Produk tidak ditemukan");
 
     if (product.trackBatch) {
       const batch = await tx.stockBatch.findFirst({ where: { id: input.batchId, productId: product.id } });

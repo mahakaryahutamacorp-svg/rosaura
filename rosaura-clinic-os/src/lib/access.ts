@@ -53,7 +53,11 @@ export function canFillJournal(user: AppUser) {
 }
 
 export function canSeeStock(user: AppUser) {
-  return can(user, ["WAREHOUSE", "CLINICAL"]);
+  return can(user, ["WAREHOUSE", "CLINICAL", "FRONT_OFFICE"]);
+}
+
+export function canManageDoctors(user: AppUser) {
+  return isOwner(user);
 }
 
 export function canOperateBooking(user: AppUser, therapistId: string) {

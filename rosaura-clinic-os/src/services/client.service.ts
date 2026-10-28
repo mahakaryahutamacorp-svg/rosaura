@@ -4,6 +4,7 @@ import { ServiceError } from "@/lib/errors";
 import type { AppUser } from "@/lib/access";
 import { can } from "@/lib/access";
 import { nextCode } from "@/lib/codes";
+import { rankBySmartSearch } from "@/lib/search";
 import { writeAudit } from "@/services/audit";
 
 export const CLIENT_PAGE_SIZE = 25;
@@ -49,34 +50,59 @@ export async function getClientProfile(clientId: string) {
   });
 }
 
+function clientRowSelect(includePhone: boolean) {
+  return {
+    id: true,
+    fullName: true,
+    clientCode: true,
+    dateOfBirth: true,
+    isActive: true,
+    phone: includePhone,
+    _count: { select: { skinRecords: true } },
+  } satisfies Prisma.ClientSelect;
+}
+
+/** Id klien yang cocok, sudah diurutkan dari skor tertinggi. Telepon hanya dicari bila boleh dilihat. */
+async function rankClientIds(term: string, includePhone: boolean) {
+  const candidates = await prisma.client.findMany({
+    orderBy: [{ fullName: "asc" }, { id: "asc" }],
+    select: { id: true, fullName: true, clientCode: true, address: true, phone: includePhone },
+  });
+  return rankBySmartSearch(candidates, term, (client) => [
+    client.fullName,
+    client.clientCode,
+    client.address,
+    includePhone ? client.phone : null,
+  ]).map((client) => client.id);
+}
+
 export async function listClientRows(query: string, page: number, includePhone: boolean) {
   const term = query.trim().slice(0, 80);
-  const where: Prisma.ClientWhereInput = term
-    ? {
-        OR: [
-          { fullName: { contains: term } },
-          { clientCode: { contains: term } },
-          ...(includePhone ? [{ phone: { contains: term } }] : []),
-        ],
-      }
-    : {};
-  const total = await prisma.client.count({ where });
+  const select = clientRowSelect(includePhone);
+
+  if (!term) {
+    const total = await prisma.client.count();
+    const pages = Math.max(1, Math.ceil(total / CLIENT_PAGE_SIZE));
+    const safePage = Math.min(safePageNumber(page), pages);
+    const items = await prisma.client.findMany({
+      orderBy: [{ fullName: "asc" }, { id: "asc" }],
+      skip: (safePage - 1) * CLIENT_PAGE_SIZE,
+      take: CLIENT_PAGE_SIZE,
+      select,
+    });
+    return { total, page: safePage, pages, items };
+  }
+
+  const rankedIds = await rankClientIds(term, includePhone);
+  const total = rankedIds.length;
   const pages = Math.max(1, Math.ceil(total / CLIENT_PAGE_SIZE));
   const safePage = Math.min(safePageNumber(page), pages);
-  const items = await prisma.client.findMany({
-    where,
-    orderBy: [{ fullName: "asc" }, { id: "asc" }],
-    skip: (safePage - 1) * CLIENT_PAGE_SIZE,
-    take: CLIENT_PAGE_SIZE,
-    select: {
-      id: true,
-      fullName: true,
-      clientCode: true,
-      dateOfBirth: true,
-      isActive: true,
-      phone: includePhone,
-      _count: { select: { skinRecords: true } },
-    },
+  const pageIds = rankedIds.slice((safePage - 1) * CLIENT_PAGE_SIZE, safePage * CLIENT_PAGE_SIZE);
+  const rows = await prisma.client.findMany({ where: { id: { in: pageIds } }, select });
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  const items = pageIds.flatMap((id) => {
+    const row = byId.get(id);
+    return row ? [row] : [];
   });
   return { total, page: safePage, pages, items };
 }

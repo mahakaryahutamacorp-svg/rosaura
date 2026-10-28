@@ -2,8 +2,9 @@ import { createClientAction } from "@/app/actions/operations";
 import { ClientDirectory } from "@/components/clients/ClientDirectory";
 import { Flash } from "@/components/Flash";
 import { Pager } from "@/components/Pager";
+import { SearchBox } from "@/components/search/SearchBox";
 import { can, canSeeClientPhone, requireUser } from "@/lib/access";
-import { fieldClass, labelClass, primaryButton, secondaryButton } from "@/lib/styles";
+import { fieldClass, labelClass, primaryButton } from "@/lib/styles";
 import { formatDateOnlyUtc } from "@/lib/time";
 import { listClientRows } from "@/services/client.service";
 import { redirect } from "next/navigation";
@@ -26,7 +27,8 @@ export default async function ClientsPage({
       <div>
         <h1 className="font-display text-4xl">Klien</h1>
         <p className="text-sm text-muted">
-          {result.total} profil{query ? ` cocok dengan "${query}"` : ""}. Ketik lalu tekan Cari untuk menyaring.
+          {result.total} profil{query ? ` cocok dengan "${query}", diurutkan dari yang paling relevan` : ""}. Hasil
+          langsung tersaring saat mengetik dan tetap ketemu meski ada salah ketik ringan.
           {showPhone ? "" : " Nomor telepon hanya diisi saat pasien baru mendaftar, lalu disembunyikan."}
         </p>
       </div>
@@ -56,21 +58,14 @@ export default async function ClientsPage({
         </form>
       ) : null}
 
-      <form method="get" action="/clients" className="flex flex-wrap items-end gap-3">
-        <label className="min-w-64 flex-1">
-          <span className={labelClass}>Cari klien</span>
-          <input
-            className={fieldClass}
-            name="q"
-            defaultValue={query}
-            maxLength={80}
-            placeholder={showPhone ? "Ketik nama, kode, atau telepon" : "Ketik nama atau kode"}
-          />
-        </label>
-        <button className={secondaryButton} type="submit">
-          Cari
-        </button>
-      </form>
+      <SearchBox
+        basePath="/clients"
+        label="Cari pasien"
+        defaultValue={query}
+        placeholder={
+          showPhone ? "Nama (urutan bebas), kode, alamat, atau potongan telepon" : "Nama (urutan bebas), kode, atau alamat"
+        }
+      />
 
       <ClientDirectory
         canEdit={canEdit}
